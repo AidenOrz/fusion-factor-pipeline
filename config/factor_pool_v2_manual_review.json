@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "status": "manual_confirmed_candidate_pool",
+  "decision_date": "2026-08-18",
+  "source": {
+    "selected_features_file": "runs/factor_selection_v2_direction_review/selected_features.json",
+    "direction_review_file": "runs/factor_selection_v2_direction_review/direction_review.csv",
+    "selection_period": "2023-06-01..2024-09-12",
+    "evaluation_start_after_label_gap": "2024-10-22",
+    "target": "EXRET20",
+    "label_gap_trading_days": 20
+  },
+  "activation": {
+    "explicit_cli_only": true,
+    "automatic_direction_flip": false,
+    "raw_expression_config_unchanged": true,
+    "selection_period_rows_used_for_training": false
+  },
+  "base_feature_policy": {
+    "source": "selected_features_file",
+    "exclude_manual_review_required": true,
+    "excluded_review_statuses": [
+      "regime_sensitive",
+      "unstable",
+      "insufficient_data"
+    ],
+    "reason": "第一轮只保留未被方向审阅标记的稳定候选；任何方向变换必须在 manual_candidates 中显式列出。"
+  },
+  "manual_candidates": [
+    {
+      "source_column": "alpha_qg_f001",
+      "output_column": "manual__alpha_qg_f001__short",
+      "direction": "short",
+      "transform": "negate",
+      "family": "momentum_reversal",
+      "reason": "动量簇代表；选择期、近期和历史 IC 均稳定为负。"
+    },
+    {
+      "source_column": "alpha_qg_f005",
+      "output_column": "manual__alpha_qg_f005__short",
+      "direction": "short",
+      "transform": "negate",
+      "family": "volume",
+      "reason": "量能簇代表；方向较稳定但 IC 较弱，作为小规模候选而非已验证 alpha。"
+    },
+    {
+      "source_column": "alpha_qg_f006",
+      "output_column": "manual__alpha_qg_f006__short",
+      "direction": "short",
+      "transform": "negate",
+      "family": "vwap",
+      "reason": "VWAP 簇代表；与 vwap_dev_10 二选一，保留 f006。"
+    }
+  ],
+  "watch_only": [
+    {
+      "factor": "alpha004",
+      "reason": "regime_sensitive，近期方向转正但强度有限；不进入第一轮面板。"
+    },
+    {
+      "factor": "gtja_183",
+      "reason": "regime_sensitive，近期负 IC 较强；单独观察，不进入第一轮面板。"
+    },
+    {
+      "factor": "alpha052",
+      "reason": "unstable，选择期 IC 为正但方向换向频繁；仅观察。"
+    }
+  ],
+  "drop_policy": {
+    "a_transform_other_than_manual_candidates": [
+      "alpha_qg_amt_ratio_5",
+      "alpha_qg_corr_pv_10",
+      "alpha_qg_f008",
+      "alpha_qg_f010",
+      "alpha_qg_mom_20",
+      "alpha_qg_vwap_dev_10"
+    ],
+    "unstable_drop": [
+      "alpha055",
+      "gtja_176"
+    ],
+    "all_insufficient_data": true,
+    "all_other_regime_sensitive": true,
+    "note": "剔除只影响本候选池，不删除原始面板列或表达式注册。"
+  }
+}

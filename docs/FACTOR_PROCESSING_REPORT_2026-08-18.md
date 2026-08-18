@@ -256,6 +256,8 @@ tests/test_dev_lockbox.py::test_duplicate_or_out_of_order_append_rejected
 
 ## 7. 建议的下一步操作
 
+本轮方向清单已形成一个显式人工候选池，实施和第一轮描述性结果见 [MANUAL_FACTOR_POOL_NEXT_STEP_2026-08-18.md](MANUAL_FACTOR_POOL_NEXT_STEP_2026-08-18.md)。该候选池不会自动激活，也没有把 short 建议写回原始表达式配置。
+
 ### 第一步：人工处理方向报告
 
 先查看 [direction_review.csv](../runs/factor_selection_v2_direction_review/direction_review.csv)，优先处理：
@@ -302,4 +304,3 @@ python bridge/panel.py `
 - GBDT 实现：[gbdt.py](../bridge/gbdt.py)
 - 特征工程实现：[feature_engineering.py](../bridge/feature_engineering.py)
 - 基准评估实现：[benchmark.py](../bridge/benchmark.py)
-
