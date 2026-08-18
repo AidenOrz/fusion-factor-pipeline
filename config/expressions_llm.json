@@ -1,0 +1,77 @@
+{
+  "source": "deepseek_factor_miner",
+  "requested_model": "deepseek-v4-flash",
+  "served_model": "deepseek-v4-flash",
+  "expressions": [
+    {
+      "id": "f001",
+      "expression": "rank(close/ts_mean(close,20))",
+      "direction": "long",
+      "hypothesis": "收盘价站上20日均线幅度越大，动量越强，未来倾向继续上行",
+      "engine": "quantgpt"
+    },
+    {
+      "id": "f002",
+      "expression": "rank(-ts_mean(returns,5))",
+      "direction": "long",
+      "hypothesis": "过去5日平均收益越低，短期超跌反弹概率越大",
+      "engine": "quantgpt"
+    },
+    {
+      "id": "f003",
+      "expression": "rank(-ts_std(returns,20))",
+      "direction": "long",
+      "hypothesis": "过去20日收益波动率越低，风险越小，未来更可能获得稳健正收益",
+      "engine": "quantgpt"
+    },
+    {
+      "id": "f004",
+      "expression": "rank(ts_corr(returns,volume,20))",
+      "direction": "long",
+      "hypothesis": "收益与成交量正相关性越强，越受资金关注，后续易延续上涨",
+      "engine": "quantgpt"
+    },
+    {
+      "id": "f005",
+      "expression": "rank(volume/ts_mean(volume,20))",
+      "direction": "long",
+      "hypothesis": "成交量较20日均值放大越显著，短线资金参与度越高，推升价格概率大",
+      "engine": "quantgpt"
+    },
+    {
+      "id": "f006",
+      "expression": "rank(ts_mean(close/vwap-1,5))",
+      "direction": "long",
+      "hypothesis": "收盘价持续高于VWAP，买方力量占优，未来多头行情更可能延续",
+      "engine": "quantgpt"
+    },
+    {
+      "id": "f007",
+      "expression": "rank(-ts_mean((high-low)/close,10))",
+      "direction": "long",
+      "hypothesis": "近期日内振幅收窄，区间收缩后存在向上突破动能",
+      "engine": "quantgpt"
+    },
+    {
+      "id": "f008",
+      "expression": "rank(ts_mean(sign_power(returns,2),10))",
+      "direction": "long",
+      "hypothesis": "过去10日带符号平方收益越大，正收益动能越强，非线性强化趋势延续",
+      "engine": "quantgpt"
+    },
+    {
+      "id": "f009",
+      "expression": "rank(ts_mean(returns,10))-rank(ts_std(returns,20))",
+      "direction": "long",
+      "hypothesis": "高动量且低波动的组合，更具备持续上涨的稳定性",
+      "engine": "quantgpt"
+    },
+    {
+      "id": "f010",
+      "expression": "rank(volume/ts_mean(volume,20))*rank(close/ts_mean(close,20))",
+      "direction": "long",
+      "hypothesis": "放量且价格处于20日均线上方的双重确认，趋势加速概率较高",
+      "engine": "quantgpt"
+    }
+  ]
+}

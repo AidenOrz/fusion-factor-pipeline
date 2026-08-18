@@ -1,0 +1,32 @@
+schema: 1
+mode: developer_observation
+formal_reveal_limit: 1
+observe_unlimited: true
+min_observation_days: 0
+min_closed_trades_for_formal_reveal: 0
+allowed_extra_columns:
+  - name
+  - signal
+  - close
+  - stop_loss
+  - risk_pct
+  - phase_tag
+  - trigger_tag
+  - volume_tag
+  - late_stage
+  - late_stage_tag
+  - late_stage_pct_rank
+  - sector_name
+  - sector_grade_cap
+  - acceptance_tag
+  - location_tag
+  - follow_tag
+  - stage2_tag
+  - risk_tags
+  - sector_flow_z
+  - sector_flow_tag
+  - veto_reasons
+  - dimension__contraction
+  - dimension__trigger_quality
+  - dimension__position
+  - corporate_action_tag

@@ -1,0 +1,28 @@
+# Python and local tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.tmp/
+.tmp_pytest/
+.venv/
+.env
+.env.*
+!.env.example
+
+# Local/generated artifacts
+artifacts/
+data/
+runs/*
+
+# Keep the small, reviewable selection outputs that are referenced by the
+# factor-processing report.  Large matrices and market-data files stay local.
+!runs/
+!runs/factor_selection_v2_direction_review/
+!runs/factor_selection_v2_direction_review/*.csv
+!runs/factor_selection_v2_direction_review/*.json
+!runs/factor_selection_v2_direction_review/*.md
+
+# Derived market data and serialized panels
+*.parquet
+*.sqlite3
+*.db

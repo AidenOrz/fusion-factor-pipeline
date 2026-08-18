@@ -1,0 +1,14 @@
+{
+  "source": "starter_pack_deterministic",
+  "note": "P1 fallback: LLM mining requires DeepSeek key; these 8 expressions are deterministic templates with pre-registered directions. QuantGPT score is not used.",
+  "expressions": [
+    {"id": "mom_20", "expression": "rank(close / ts_shift(close, 20))", "direction": "long", "hypothesis": "20-day price momentum persists", "engine": "builtin"},
+    {"id": "rev_5", "expression": "rank(-ts_delta(close, 5) / ts_shift(close, 5))", "direction": "long", "hypothesis": "5-day short-term reversal", "engine": "builtin"},
+    {"id": "vol_20", "expression": "rank(-ts_std(close / ts_shift(close, 1) - 1, 20))", "direction": "long", "hypothesis": "low volatility outperforms", "engine": "builtin"},
+    {"id": "trend_10", "expression": "rank(ts_decay_linear(close, 10) / close)", "direction": "long", "hypothesis": "decay-weighted trend strength", "engine": "builtin"},
+    {"id": "corr_pv_10", "expression": "rank(ts_corr(close, vol, 10))", "direction": "long", "hypothesis": "price-volume participation", "engine": "builtin"},
+    {"id": "range_15", "expression": "rank(-(high - low) / ts_mean(high - low, 15))", "direction": "long", "hypothesis": "range contraction before expansion", "engine": "builtin"},
+    {"id": "amt_ratio_5", "expression": "rank(amount / ts_mean(amount, 5))", "direction": "long", "hypothesis": "turnover acceleration", "engine": "builtin"},
+    {"id": "vwap_dev_10", "expression": "rank(close / vwap)", "direction": "long", "hypothesis": "close above intraday value attracts follow-through", "engine": "builtin"}
+  ]
+}
