@@ -28,7 +28,8 @@ except Exception:  # pragma: no cover - fallback for restricted environments
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from bridge.benchmark import attach_forward_returns, load_index
+from bridge.benchmark import attach_forward_returns, load_index, ndcg_at_k, ndcg_random_baseline
+from bridge.factor_selection import daily_ic
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PANEL = PROJECT_ROOT / "data" / "panel_fusion.parquet"
@@ -46,6 +47,8 @@ CLASSIFICATION = "post_hoc_descriptive_only"
 TOP_KS = (1, 3, 5, 10, 20)
 GAP_TRADING_DAYS = 20
 ENSEMBLE_SEEDS = (42, 43, 44)
+EVALUATION_STAGES = ("selection_ablation", "acceptance")
+PRIMARY_NDCG_KS = (5, 20)
 
 
 def load_candidates(path: Path | str = DEFAULT_CANDIDATES) -> pd.DataFrame:
@@ -145,6 +148,104 @@ def static_topk_summary(
     return rows
 
 
+def prediction_quality_summary(
+    frame: pd.DataFrame,
+    scorer: str,
+    target: str,
+    *,
+    ndcg_ks: tuple[int, ...] = PRIMARY_NDCG_KS,
+) -> dict[str, Any]:
+    """Summarize the ranking foundation before looking at portfolio tails.
+
+    IC is calculated as a daily cross-sectional Spearman series.  The pooled
+    row-wise correlation is intentionally kept separate because it can be
+    dominated by the number of rows per date and is not the selection metric.
+    """
+    valid = frame.dropna(subset=[scorer, target]).copy()
+    if valid.empty:
+        return {
+            "mean_daily_spearman_ic": None,
+            "ic_std": None,
+            "ic_ir_hac": None,
+            "ic_ir_unadjusted": None,
+            "ic_hac_tstat": None,
+            "ic_win_rate": None,
+            "ic_days": 0,
+            **{
+                name: None
+                for k in ndcg_ks
+                for name in (
+                    f"mean_daily_ndcg_at_{k}",
+                    f"mean_daily_ndcg_random_at_{k}",
+                    f"mean_daily_ndcg_delta_at_{k}",
+                )
+            },
+        }
+    ic_metrics = daily_ic(valid, scorer, target)
+    quality: dict[str, Any] = {
+        "mean_daily_spearman_ic": ic_metrics["ic_mean"],
+        "ic_std": ic_metrics["ic_std"],
+        "ic_ir_hac": ic_metrics["ic_ir"],
+        "ic_ir_unadjusted": ic_metrics["ic_ir_unadjusted"],
+        "ic_hac_tstat": ic_metrics["ic_mean_hac_tstat"],
+        "ic_win_rate": ic_metrics["ic_win_rate"],
+        "ic_days": ic_metrics["n_days"],
+    }
+    for k in ndcg_ks:
+        values: list[float] = []
+        random_values: list[float] = []
+        for _, day in valid.groupby("date", sort=False):
+            observed = ndcg_at_k(day[scorer], day[target], k)
+            random = ndcg_random_baseline(day[target], k)
+            if observed is not None:
+                values.append(observed)
+            if random is not None:
+                random_values.append(random)
+        observed_mean = float(np.mean(values)) if values else None
+        random_mean = float(np.mean(random_values)) if random_values else None
+        quality[f"mean_daily_ndcg_at_{k}"] = (
+            round(observed_mean, 6) if observed_mean is not None else None
+        )
+        quality[f"mean_daily_ndcg_random_at_{k}"] = (
+            round(random_mean, 6) if random_mean is not None else None
+        )
+        quality[f"mean_daily_ndcg_delta_at_{k}"] = (
+            round(observed_mean - random_mean, 6)
+            if observed_mean is not None and random_mean is not None
+            else None
+        )
+    return quality
+
+
+def fold_ic_summary(folds: list[dict[str, Any]]) -> dict[str, Any]:
+    """Describe fold-to-fold IC stability using the primary daily IC metric."""
+    values = np.asarray(
+        [
+            fold["quality"]["mean_daily_spearman_ic"]
+            for fold in folds
+            if fold.get("quality", {}).get("mean_daily_spearman_ic") is not None
+        ],
+        dtype=float,
+    )
+    if values.size == 0:
+        return {
+            "fold_count": 0,
+            "mean_daily_spearman_ic": None,
+            "fold_ic_std": None,
+            "fold_ic_sign_consistency": None,
+            "positive_fold_rate": None,
+        }
+    positive = float((values > 0).mean())
+    negative = float((values < 0).mean())
+    return {
+        "fold_count": int(values.size),
+        "mean_daily_spearman_ic": round(float(values.mean()), 6),
+        "fold_ic_std": round(float(values.std(ddof=1)), 6) if values.size > 1 else 0.0,
+        "fold_ic_sign_consistency": round(max(positive, negative), 6),
+        "positive_fold_rate": round(positive, 6),
+    }
+
+
 def binding_calibration(candidates: pd.DataFrame) -> dict[str, Any]:
     binding = candidates.loc[
         candidates["v2_positive_slot_binding"].fillna(False)
@@ -200,7 +301,12 @@ def walk_forward_gbdt(
     top_ks: tuple[int, ...] = TOP_KS,
     daily_returns: pd.DataFrame | None = None,
     feature_selection_end: pd.Timestamp | str | None = None,
+    evaluation_stage: str = "selection_ablation",
 ) -> dict[str, Any]:
+    if evaluation_stage not in EVALUATION_STAGES:
+        raise ValueError(
+            f"evaluation_stage must be one of {EVALUATION_STAGES}, got {evaluation_stage!r}"
+        )
     work = panel.dropna(subset=[target]).copy()
     selection_eval_start = feature_selection_evaluation_start(
         work["date"], feature_selection_end, label_gap_days=gap_days
@@ -281,7 +387,8 @@ def walk_forward_gbdt(
         predictions.loc[test_mask] = pred
         test_slice = work.loc[test_mask].copy()
         test_slice["prediction"] = pred
-        ic = float(test_slice["prediction"].corr(test_slice[target], method="spearman"))
+        pooled_ic = float(test_slice["prediction"].corr(test_slice[target], method="spearman"))
+        quality = prediction_quality_summary(test_slice, "prediction", target)
         ml_topk = static_topk_summary(test_slice, "prediction", target, top_ks=top_ks)
         legacy_topk = static_topk_summary(
             legacy_frame.loc[test_mask], "legacy_score", target, top_ks=top_ks
@@ -297,7 +404,9 @@ def walk_forward_gbdt(
                 "test_end": str(max(test_dates).date()),
                 "train_rows": int(train_mask.sum()),
                 "test_rows": int(test_mask.sum()),
-                "spearman_ic": round(ic, 6),
+                "pooled_spearman_ic": round(pooled_ic, 6),
+                "quality": quality,
+                "spearman_ic": quality["mean_daily_spearman_ic"],
                 "ml_topk": ml_topk,
                 "legacy_topk": legacy_topk,
                 "ml_minus_legacy_top3": round(
@@ -308,11 +417,21 @@ def walk_forward_gbdt(
 
     eval_slice = work.loc[predictions.notna()].copy()
     eval_slice["prediction"] = predictions.loc[predictions.notna()]
+    pooled_ic = float(eval_slice["prediction"].corr(eval_slice[target], method="spearman"))
+    quality = prediction_quality_summary(eval_slice, "prediction", target)
     ml_topk = static_topk_summary(eval_slice, "prediction", target, top_ks=top_ks)
     legacy_topk = static_topk_summary(eval_slice, "legacy_score", target, top_ks=top_ks)
-    ic = float(eval_slice["prediction"].corr(eval_slice[target], method="spearman"))
     ml_top = {row["top_k"]: row["mean_target"] for row in ml_topk}
     legacy_top = {row["top_k"]: row["mean_target"] for row in legacy_topk}
+    primary_metrics = {
+        "mean_daily_spearman_ic": quality["mean_daily_spearman_ic"],
+        "ic_ir_hac": quality["ic_ir_hac"],
+        "mean_daily_ndcg_at_5": quality["mean_daily_ndcg_at_5"],
+        "mean_daily_ndcg_at_20": quality["mean_daily_ndcg_at_20"],
+        "mean_daily_ndcg_delta_at_5": quality["mean_daily_ndcg_delta_at_5"],
+        "mean_daily_ndcg_delta_at_20": quality["mean_daily_ndcg_delta_at_20"],
+        "fold_stability": fold_ic_summary(fold_rows),
+    }
     feature_importance = [
         {
             "feature": feature,
@@ -338,6 +457,7 @@ def walk_forward_gbdt(
         )
     return {
         "classification": CLASSIFICATION,
+        "evaluation_stage": evaluation_stage,
         "estimator": "lightgbm.LGBMRegressor" if LIGHTGBM_AVAILABLE else "sklearn.HistGradientBoostingRegressor",
         "objective": "huber",
         "ensemble_seeds": list(ENSEMBLE_SEEDS),
@@ -359,7 +479,10 @@ def walk_forward_gbdt(
         ),
         "features": feature_columns,
         "evaluated_rows": int(len(eval_slice)),
-        "overall_spearman_ic": round(ic, 6),
+        "pooled_spearman_ic": round(pooled_ic, 6),
+        "overall_spearman_ic": quality["mean_daily_spearman_ic"],
+        "overall_ic_quality": quality,
+        "primary_metrics": primary_metrics,
         "overall_ml_topk": ml_topk,
         "overall_legacy_topk": legacy_topk,
         "overall_ml_minus_legacy_top3": round(
@@ -392,15 +515,23 @@ def write_report(result: dict[str, Any], out_dir: Path | str) -> Path:
         f"> 模型：{result.get('estimator')}",
         f"> 说明：{result.get('note')}",
         "",
-        "## 总览",
+        f"## 阶段主指标：{result.get('evaluation_stage', 'selection_ablation')}",
         "",
         f"- 目标：{result.get('target')}",
         f"- 特征选择截止日：{result.get('feature_selection_end') or '未提供选择元数据'}",
         f"- 评估行数：{result.get('evaluated_rows')}",
-        f"- 总体 Spearman IC：{result.get('overall_spearman_ic')}",
-        f"- 总体 ML Top3 平均目标：{result.get('overall_ml_minus_legacy_top3')}（相对 legacy）",
+        f"- 平均日截面 Spearman IC：{result.get('overall_spearman_ic')}",
+        f"- HAC IC_IR：{result.get('overall_ic_quality', {}).get('ic_ir_hac')}",
+        f"- 平均日 NDCG@5：{result.get('overall_ic_quality', {}).get('mean_daily_ndcg_at_5')}",
+        f"- 平均日 NDCG@20：{result.get('overall_ic_quality', {}).get('mean_daily_ndcg_at_20')}",
+        f"- NDCG@5 - 随机基线：{result.get('overall_ic_quality', {}).get('mean_daily_ndcg_delta_at_5')}",
+        f"- NDCG@20 - 随机基线：{result.get('overall_ic_quality', {}).get('mean_daily_ndcg_delta_at_20')}",
+        f"- 折间 IC 符号一致性：{result.get('primary_metrics', {}).get('fold_stability', {}).get('fold_ic_sign_consistency')}",
+        f"- 折间 IC 标准差：{result.get('primary_metrics', {}).get('fold_stability', {}).get('fold_ic_std')}",
         "",
-        "## 总体 Top-K",
+        "以上指标是筛选/消融期的主判据。Top-K、上证超额和 legacy 对比只作附录观察，不能单独证明排序能力。",
+        "",
+        "## 附录 A：Top-K 观察",
         "",
         "### ML 预测",
         "",
@@ -410,9 +541,9 @@ def write_report(result: dict[str, Any], out_dir: Path | str) -> Path:
         "",
         pd.DataFrame(result["overall_legacy_topk"]).to_markdown(index=False),
         "",
-        "## 上证指数基准（新验收口径）",
+        "## 附录 B：上证指数与 Top-K 基准",
         "",
-        "验收只要求跑赢上证指数；legacy_score 只作诊断参考。",
+        "上证指数、Top-K 超额和 legacy_score 仅在验收期作为主指标；当前阶段不据此作候选升级。",
         "",
     ]
     if result.get("benchmark_vs_sse"):
@@ -422,13 +553,16 @@ def write_report(result: dict[str, Any], out_dir: Path | str) -> Path:
             lines.append("")
             lines.append(pd.DataFrame(rows).to_markdown(index=False))
             lines.append("")
-    lines.extend(["## 折折叠明细", "",])
+    lines.extend(["## 折间质量明细", "",])
     for fold in result["folds"]:
+        quality = fold.get("quality", {})
         lines.extend(
             [
                 f"- fold {fold['fold']}: test {fold['test_start']}..{fold['test_end']}, "
-                f"rows={fold['test_rows']}, IC={fold['spearman_ic']}, "
-                f"ML-legacy Top3={fold['ml_minus_legacy_top3']}",
+                f"rows={fold['test_rows']}, daily IC={quality.get('mean_daily_spearman_ic')}, "
+                f"HAC IC_IR={quality.get('ic_ir_hac')}, "
+                f"NDCG@5={quality.get('mean_daily_ndcg_at_5')}, "
+                f"ML-legacy Top3={fold['ml_minus_legacy_top3']} (appendix)",
             ]
         )
     lines.append("")
@@ -444,6 +578,12 @@ def main() -> int:
     parser.add_argument("--features-file", default=None)
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--target", default="EXRET20")
+    parser.add_argument(
+        "--evaluation-stage",
+        choices=EVALUATION_STAGES,
+        default="selection_ablation",
+        help="primary metric interpretation; Top-K becomes primary only in acceptance stage",
+    )
     parser.add_argument(
         "--feature-selection-end",
         default=None,
@@ -508,6 +648,7 @@ def main() -> int:
             target=args.target,
             daily_returns=daily_returns,
             feature_selection_end=feature_selection_end,
+            evaluation_stage=args.evaluation_stage,
         )
         report_path = write_report(result, args.out_dir)
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

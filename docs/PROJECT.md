@@ -19,7 +19,7 @@
 2. **锁箱语义**：官方 v6 锁箱保持单次揭盲；本项目开发者观察锁箱允许无限次 `observe`，`formal-reveal` 每 epoch 一次。锁箱通过只表示“进入前向观察”，不等于 alpha 验证。
 3. **数据口径**：v6 CSV 为前复权；桥接层统一 baostock 前复权数据；volume 统一为股；vwap=amount/volume；市值=close×总股本（baostock `totalShare`，按 `pubDate` as-of）。
 4. **因子生产**：模型只生成表达式文本，收益由本项目判官评估。DeepSeek 当前可用模型为 `deepseek-v4-flash` 与 `deepseek-v4-pro`；支持 openai/anthropic provider。
-5. **主判官**：lightgbm `LGBMRegressor` + purged walk-forward（gap≥10 交易日）；单笔净R/Top-K 前瞻收益为观测，上证指数为唯一硬验收。
+5. **主判官**：lightgbm `LGBMRegressor` + purged walk-forward（gap≥10 交易日）；筛选/消融期主看按日截面 IC、NDCG、HAC IC_IR 和折间一致性，因子冻结后的验收期再以单笔净R/Top-K 前瞻收益跑赢上证指数为硬验收。
 6. **RL 不进主判官**；aurumq-rl 的 PPO/A2C/SAC 保留为外部研究。
 
 ## 3. 因子池现状（2026-08）

@@ -12,7 +12,7 @@
 2. `EXRET20` 的 purged gap 固定为 20 个交易日；特征选择结束后还会额外保留 20 个交易日的标签净空。
 3. 截面 rank、z-score、winsorize、行业中性残差和乘除交叉项已经实现，但行业中性与交叉项必须使用选择期计划显式指定的因子列表。
 4. 方向不会被程序自动翻转。程序只生成 `direction_review.csv`，把可能由市场风格变化或频繁换向造成的风险标记出来。
-5. 基准评估增加了 NDCG 和年化超额字段；年化超额明确是重叠 `EXRET20` 的近似口径，不当作独立日收益复利。
+5. 基准评估增加了 NDCG 和年化超额字段；年化超额明确是重叠 `EXRET20` 的近似口径，不当作独立日收益复利。筛选/消融期以按日截面平均 Spearman IC、HAC IC_IR、NDCG 和折间一致性为主指标，Top-K 与上证超额降为附录；因子冻结后的验收期才把 Top-K 净R、右尾捕获和 regret 升为主指标。
 
 当前最重要的判断是：方向报告适合作为人工审阅清单，不适合直接把所有建议写入配置。特别是行业中性候选数量较多，应该分批做增量消融，而不是一次性扩充模型。
 
@@ -200,12 +200,15 @@ gtja_046
 
 ### 5.1 Huber 回归
 
-适合作为第一版基线。`EXRET20` 存在肥尾收益，Huber 能降低极端样本对回归拟合的影响。但“Spearman IC 高就能把收益集中到 Top-K”并不成立，必须同时看：
+适合作为第一版基线。`EXRET20` 存在肥尾收益，Huber 能降低极端样本对回归拟合的影响。但“Spearman IC 高就能把收益集中到 Top-K”并不成立。筛选/消融期必须先看：
 
-- NDCG
-- Top-5 的日胜率
-- Top-5 对上证指数的超额
-- 各 walk-forward fold 的稳定性
+- 按日截面平均 Spearman IC（目标为 `EXRET20`）
+- HAC IC_IR
+- `NDCG@5` / `NDCG@20`
+- 相对随机排序的 NDCG 增量
+- 各 walk-forward fold 的 IC 均值、符号一致性和标准差
+
+Top-K 的净R、右尾捕获、regret 和上证超额只在因子冻结后的验收期作为主指标；当前阶段仅放在附录供参考。
 
 ### 5.2 截面归一化
 
@@ -235,11 +238,12 @@ gtja_046
 - 特征工程烟测
 - 方向审阅和 20 个交易日净空烟测
 - Huber 三种子小样本 walk-forward
+- 按日截面 IC、HAC IC_IR、NDCG 和折间一致性指标测试
 - NDCG 与年化超额指标烟测
 - 原有 bugfix/review smoke tests
 - Python 编译检查
 
-完整 `pytest tests -q` 当前为 `5 passed, 1 failed`。唯一失败是已有锁箱测试的错误文案不匹配：
+完整 `pytest tests -q` 当前为 `11 passed, 1 failed`。唯一失败是已有锁箱测试的错误文案不匹配：
 
 ```text
 tests/test_dev_lockbox.py::test_duplicate_or_out_of_order_append_rejected

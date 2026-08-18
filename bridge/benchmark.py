@@ -56,6 +56,27 @@ def _ndcg_at_k(scores: pd.Series, targets: pd.Series, k: int) -> float | None:
     return dcg / ideal_dcg
 
 
+def ndcg_at_k(scores: pd.Series, targets: pd.Series, k: int) -> float | None:
+    """Public NDCG helper for model-quality diagnostics."""
+    return _ndcg_at_k(scores, targets, k)
+
+
+def ndcg_random_baseline(targets: pd.Series, k: int) -> float | None:
+    """Expected NDCG for a uniformly random ordering of one cross-section."""
+    valid = pd.to_numeric(targets, errors="coerce").dropna()
+    if valid.empty:
+        return None
+    relevance = valid.rank(method="average", pct=True).to_numpy(dtype=float)
+    gains = 2.0**relevance - 1.0
+    width = min(int(k), len(gains))
+    discounts = 1.0 / np.log2(np.arange(2, width + 2))
+    ideal_dcg = float(np.sum(np.sort(gains)[::-1][:width] * discounts))
+    if ideal_dcg <= 0:
+        return 1.0
+    expected_dcg = float(gains.mean() * discounts.sum())
+    return expected_dcg / ideal_dcg
+
+
 def load_index(path: Path | str = DEFAULT_INDEX) -> pd.DataFrame:
     frame = pd.read_csv(path, dtype={"code": str}, encoding="utf-8-sig")
     frame["date"] = pd.to_datetime(frame["date"], errors="raise")
