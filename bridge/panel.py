@@ -1,6 +1,7 @@
-"""Factor panel builder for the fusion pipeline.
+"""Factor panel builder for the full-market ranking pipeline.
 
-Inputs are the frozen v6 events panel and the workspace kline directory.
+The default research scope is the full daily v6 panel.  The legacy events
+scope remains available only for reproducing event-conditioned diagnostics.
 Every expression is evaluated fail-fast: a missing required column raises,
 NaN/inf is sanitized and counted, and factors exceeding the missing-rate
 threshold are rejected instead of silently diluted.
@@ -26,6 +27,8 @@ from bridge.feature_engineering import (
     add_pairwise_cross_features,
 )
 from bridge.ops import FactorEvaluationError, evaluate_builtin, sanitize
+from bridge.labels import attach_cross_sectional_labels
+from bridge.universe import DEFAULT_MCAP, attach_universe_masks, universe_summary
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_EVENTS = (
@@ -168,12 +171,17 @@ def build_fusion_panel(
     panel_path: Path | str = DEFAULT_PANEL,
     out_path: Path | str,
     shares_path: Path | str | None = None,
+    mcap_path: Path | str | None = DEFAULT_MCAP,
+    scope: str = "full_market",
+    add_labels: bool = True,
     extra_factors: list[Path | str] | None = None,
     add_cs_features: bool = False,
     cs_factors: list[str] | None = None,
     industry_neutral_factors: list[str] | None = None,
     cross_factors: list[str] | None = None,
 ) -> dict[str, Any]:
+    if scope not in {"full_market", "events"}:
+        raise ValueError("scope must be 'full_market' or 'events'")
     daily = build_daily_feature_frame(panel_path)
     if shares_path is not None:
         from bridge.refdata import shares_to_market_cap
@@ -238,7 +246,12 @@ def build_fusion_panel(
         daily, added = add_pairwise_cross_features(daily, cross_factors)
         derived_columns.extend(added)
 
-    frame = load_events(events_path)
+    if scope == "full_market":
+        frame = attach_universe_masks(daily, mcap_path=mcap_path)
+        if add_labels:
+            frame = attach_cross_sectional_labels(frame)
+    else:
+        frame = load_events(events_path)
     merge_keys = ["date", "code"]
     available = [
         c
@@ -259,7 +272,13 @@ def build_fusion_panel(
         ]
         if c in daily.columns
     ]
-    frame = frame.merge(daily[merge_keys + available], on=merge_keys, how="left", validate="many_to_one")
+    if scope == "events":
+        frame = frame.merge(
+            daily[merge_keys + available],
+            on=merge_keys,
+            how="left",
+            validate="many_to_one",
+        )
 
     keep = [
         "ts_code",
@@ -296,16 +315,82 @@ def build_fusion_panel(
         *extra_columns,
         *derived_columns,
     ]
-    keep = list(dict.fromkeys(column for column in keep if column in frame.columns))
-    output = frame[keep].copy()
+    if scope == "full_market":
+        full_market_keep = [
+            "ts_code",
+            "trade_date",
+            "date",
+            "code",
+            "name",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "amount",
+            "vwap",
+            "pct_chg",
+            "vol",
+            "adj_factor",
+            "is_st",
+            "days_since_ipo",
+            "bar_number",
+            "industry",
+            "industry_code",
+            "benchmark_open",
+            "benchmark_close",
+            "float_mcap",
+            "adv20",
+            "universe_b1",
+            "universe_b2",
+            "universe_b3",
+            "universe_version",
+            "universe_adv_threshold",
+            "stock_ret20",
+            "benchmark_ret20",
+            "y_excess20",
+            "label_horizon",
+            "y_raw_rank20_b1",
+            "y_raw_rank20_b2",
+            "y_raw_rank20_b3",
+            "y_neutral_resid20_b1",
+            "y_neutral_resid20_b2",
+            "y_neutral_resid20_b3",
+            "y_neutral_rank20_b1",
+            "y_neutral_rank20_b2",
+            "y_neutral_rank20_b3",
+            "atr_relative",
+            "range_relative",
+            "vol_ratio",
+            "position_ema20",
+            "ret_5d",
+            "ret_20d",
+            "realized_vol_120d_d1",
+            "amount_dry_ratio",
+            *expression_columns,
+            *extra_columns,
+            *derived_columns,
+        ]
+        output = frame[[column for column in full_market_keep if column in frame.columns]].copy()
+        output["panel_scope"] = "full_market"
+    else:
+        keep = list(dict.fromkeys(column for column in keep if column in frame.columns))
+        output = frame[keep].copy()
+        output["panel_scope"] = "events"
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     output.to_parquet(out_path, index=False)
+    summary_path = None
+    if scope == "full_market" and {"universe_b1", "universe_b2", "universe_b3"}.intersection(output.columns):
+        summary_path = out_path.with_name(f"{out_path.stem}_universe_summary.csv")
+        universe_summary(output).to_csv(summary_path, index=False, encoding="utf-8-sig")
     return {
         "out_path": str(out_path),
+        "scope": scope,
         "rows": int(len(output)),
         "dates": int(output["trade_date"].nunique()),
         "stocks": int(output["code"].nunique()),
+        "universe_summary_path": str(summary_path) if summary_path else None,
         "expression_reports": reports,
         "derived_features": derived_columns,
         "cs_factors": cs_factors or (base_factor_columns if add_cs_features else []),
@@ -321,10 +406,22 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description="Build the fusion factor panel")
     parser.add_argument("--expressions", default="config/expressions.json")
-    parser.add_argument("--out", default="data/panel_fusion.parquet")
+    parser.add_argument("--out", default="data/panel_fusion_full_market.parquet")
     parser.add_argument("--events", default=str(DEFAULT_EVENTS))
     parser.add_argument("--panel", default=str(DEFAULT_PANEL))
     parser.add_argument("--shares", default=None)
+    parser.add_argument("--mcap", default=str(DEFAULT_MCAP))
+    parser.add_argument(
+        "--scope",
+        choices=["full_market", "events"],
+        default="full_market",
+        help="full daily market scope for the main system, or legacy events diagnostic scope",
+    )
+    parser.add_argument(
+        "--no-labels",
+        action="store_true",
+        help="skip forward return and cross-sectional rank labels",
+    )
     parser.add_argument("--extra-factors", default=None, help="comma separated factor parquet paths")
     parser.add_argument(
         "--add-cs-features",
@@ -386,6 +483,9 @@ def main() -> int:
         panel_path=args.panel,
         out_path=args.out,
         shares_path=args.shares,
+        mcap_path=args.mcap,
+        scope=args.scope,
+        add_labels=not args.no_labels,
         extra_factors=extra_factors,
         add_cs_features=args.add_cs_features,
         cs_factors=cs_factors,

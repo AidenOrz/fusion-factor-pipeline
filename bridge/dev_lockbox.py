@@ -224,7 +224,9 @@ class DevLockbox:
         entries = chain.get("entries", [])
         previous_hash = entries[-1]["entry_hash"] if entries else None
         previous_date = _parse_date(entries[-1]["date"]) if entries else None
-        if previous_date is not None and expected <= previous_date:
+        if previous_date is not None and expected == previous_date:
+            raise LockboxError(f"Append date {expected} is already sealed")
+        if previous_date is not None and expected < previous_date:
             raise LockboxError(
                 f"Append date {expected} must be strictly later than previous {previous_date}"
             )
