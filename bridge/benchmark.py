@@ -20,14 +20,13 @@ import pandas as pd
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-WORKSPACE = Path(__file__).resolve().parents[2]
-DEFAULT_DAILY_PANEL = (
-    WORKSPACE / "a-share-factor-engine-v6" / "artifacts" / "panel" / "panel.parquet"
+from bridge.paths import configured_upstream_path, upstream_path, validate_startup_or_exit
+
+DEFAULT_DAILY_PANEL = configured_upstream_path("v6", "artifacts", "panel", "panel.parquet")
+DEFAULT_EVENTS = configured_upstream_path(
+    "v6", "artifacts", "signals_m6", "events.parquet"
 )
-DEFAULT_EVENTS = (
-    WORKSPACE / "a-share-factor-engine-v6" / "artifacts" / "signals_m6" / "events.parquet"
-)
-DEFAULT_INDEX = WORKSPACE / "a-share-kline-data" / "_bench_000001SH.csv"
+DEFAULT_INDEX = configured_upstream_path("kline", "_bench_000001SH.csv")
 CLASSIFICATION = "post_hoc_descriptive_only"
 HORIZON = 20
 TRADING_DAYS_PER_YEAR = 252
@@ -77,7 +76,8 @@ def ndcg_random_baseline(targets: pd.Series, k: int) -> float | None:
     return expected_dcg / ideal_dcg
 
 
-def load_index(path: Path | str = DEFAULT_INDEX) -> pd.DataFrame:
+def load_index(path: Path | str | None = None) -> pd.DataFrame:
+    path = Path(path) if path is not None else upstream_path("kline", "_bench_000001SH.csv")
     frame = pd.read_csv(path, dtype={"code": str}, encoding="utf-8-sig")
     frame["date"] = pd.to_datetime(frame["date"], errors="raise")
     return frame.sort_values("date").reset_index(drop=True)
@@ -172,18 +172,22 @@ def evaluate_scorers_vs_benchmark(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate scorers against SSE benchmark")
-    parser.add_argument("--daily-panel", default=str(DEFAULT_DAILY_PANEL))
-    parser.add_argument("--events", default=str(DEFAULT_EVENTS))
-    parser.add_argument("--index", default=str(DEFAULT_INDEX))
+    parser.add_argument("--daily-panel", default=None)
+    parser.add_argument("--events", default=None)
+    parser.add_argument("--index", default=None)
     parser.add_argument("--horizon", type=int, default=HORIZON)
     args = parser.parse_args()
 
-    daily = pd.read_parquet(args.daily_panel)
+    validate_startup_or_exit(("v6", "kline"))
+    daily_panel = args.daily_panel or upstream_path("v6", "artifacts", "panel", "panel.parquet")
+    events_path = args.events or upstream_path("v6", "artifacts", "signals_m6", "events.parquet")
+    index_path = args.index or upstream_path("kline", "_bench_000001SH.csv")
+    daily = pd.read_parquet(daily_panel)
     daily["date"] = pd.to_datetime(daily["date"], errors="raise")
     daily["code"] = daily["code"].astype(str).str.zfill(6)
-    index = load_index(args.index)
+    index = load_index(index_path)
     returns = attach_forward_returns(daily, index, horizon=args.horizon)
-    events = pd.read_parquet(args.events)
+    events = pd.read_parquet(events_path)
     events["date"] = pd.to_datetime(events["date"], errors="raise")
     events["code"] = events["code"].astype(str).str.zfill(6)
     result = evaluate_scorers_vs_benchmark(

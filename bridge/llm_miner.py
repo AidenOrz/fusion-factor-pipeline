@@ -32,8 +32,9 @@ import requests
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from bridge.paths import require_upstream_root, validate_startup_or_exit
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-QUANTGPT_ROOT = PROJECT_ROOT.parent / "QuantGPT"
 PROFILES_PATH = PROJECT_ROOT / "config" / "llm_profiles.json"
 OUT_PATH = PROJECT_ROOT / "config" / "expressions_llm.json"
 RUNS_ROOT = PROJECT_ROOT / "runs" / "llm_miner"
@@ -223,8 +224,9 @@ def _build_validation_dummy(n_days: int = 60, n_stocks: int = 20) -> pd.DataFram
 
 
 def _evaluate_validation_expression(expression: str, dummy: pd.DataFrame) -> pd.Series:
-    if str(QUANTGPT_ROOT) not in sys.path:
-        sys.path.insert(0, str(QUANTGPT_ROOT))
+    quantgpt_root = require_upstream_root("quantgpt")
+    if str(quantgpt_root) not in sys.path:
+        sys.path.insert(0, str(quantgpt_root))
     from quantgpt.expression_parser import parse_expression
 
     value = parse_expression(expression)(dummy)
@@ -345,7 +347,8 @@ def main() -> int:
     parser.add_argument("--max-tokens", type=int, default=None)
     args = parser.parse_args()
 
-    env = _read_env_files([PROJECT_ROOT / ".env", QUANTGPT_ROOT / ".env"])
+    quantgpt_root = validate_startup_or_exit(("quantgpt",))["quantgpt"]
+    env = _read_env_files([PROJECT_ROOT / ".env", quantgpt_root / ".env"])
     provider = "anthropic" if args.provider == "claude" else args.provider
     config = _resolve_provider_config(provider, args.model, env)
     max_tokens = args.max_tokens or int(config["max_tokens"])

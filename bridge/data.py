@@ -16,8 +16,9 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
-WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_KLINE_DIR = WORKSPACE_ROOT / "a-share-kline-data"
+from bridge.paths import configured_upstream_path, upstream_path
+
+DEFAULT_KLINE_DIR = configured_upstream_path("kline")
 
 LOTS_PER_SHARE = 100.0
 VWAP_RATIO_TOLERANCE = (0.2, 5.0)  # catches the 100x hand/share mistake
@@ -60,14 +61,14 @@ def read_stock_csv(path: Path) -> pd.DataFrame:
 
 
 def load_kline_panel(
-    kline_dir: Path | str = DEFAULT_KLINE_DIR,
+    kline_dir: Path | str | None = None,
     *,
     codes: list[str] | None = None,
     start: str | None = None,
     end: str | None = None,
     limit: int = 0,
 ) -> pd.DataFrame:
-    kline_dir = Path(kline_dir)
+    kline_dir = Path(kline_dir) if kline_dir is not None else upstream_path("kline")
     wanted = {str(code).zfill(6) for code in codes} if codes else None
     files = sorted(kline_dir.glob("*.csv"))
     frames: list[pd.DataFrame] = []

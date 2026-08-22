@@ -106,3 +106,7 @@ y_neutral_rank20   = 当日域内 residual(y_excess20 ~ industry + log(float_mca
 - S4：B1/B2/B3 × 原始秩/行业市值中性残差秩共六项 LambdaRank 对照已完成；A0/A1 Huber 回归和 C 10 档有序 LambdaRank 辅助对照也已完成。统一汇总与结论见 `docs/FULL_MARKET_RANKING_RESULTS_2026-08-20.md`。
 
 本轮不进入 S5 专精决策或 S6 Top-K 验收：排序质量已出现候选差异，但 2025 后段 Top-K 表现仍不稳定。
+
+## 6. 下一阶段：因子精简与诊断
+
+下一阶段采用预注册式三层消融，不在全市场面板上逐因子硬磨；同时执行截面十分位单调性和 1/5/10/20/40 日 IC 衰减诊断。具体删除规则、噪声带、输出目录和 `post_hoc_descriptive_only` 纪律见 [`FACTOR_ABLATION_PLAN_2026-08-20.md`](FACTOR_ABLATION_PLAN_2026-08-20.md)。这些结果只能设计下一轮候选实验，不能直接自动翻转方向或改写冻结清单。

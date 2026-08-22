@@ -14,8 +14,9 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-WORKSPACE = Path(__file__).resolve().parents[1]  # = New project/
-PANEL = WORKSPACE / "a-share-factor-engine-v6" / "artifacts" / "panel" / "panel.parquet"
+from bridge.paths import configured_upstream_path, upstream_path, validate_startup_or_exit
+
+PANEL = configured_upstream_path("v6", "artifacts", "panel", "panel.parquet")
 OUT = Path(__file__).resolve().parent / "data" / "s1_mc_panel.parquet"
 
 START, END = "2023-06-01", "2025-12-31"
@@ -54,6 +55,8 @@ def main():
     ap.add_argument("--out", type=str, default=str(OUT), help="输出 parquet 路径")
     args = ap.parse_args()
 
+    validate_startup_or_exit(("v6",))
+    panel_path = PANEL or upstream_path("v6", "artifacts", "panel", "panel.parquet")
     import baostock as bs
     lg = bs.login()
     if lg.error_code != "0":
@@ -73,7 +76,7 @@ def main():
                     codes.append(code)
             print(f"全市场列表(沪深股票): {len(codes)} 只 (query_all_stock)")
         else:
-            codes = pd.read_parquet(PANEL, columns=["code"])["code"].astype(str).str.zfill(6).unique()
+            codes = pd.read_parquet(panel_path, columns=["code"])["code"].astype(str).str.zfill(6).unique()
             codes = list(codes)
         done = set()
         OUTX = Path(args.out)

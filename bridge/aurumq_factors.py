@@ -21,11 +21,15 @@ import pandas as pd
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-AURUMQ_ROOT = PROJECT_ROOT.parent / "aurumq-rl"
-DEFAULT_PANEL = (
-    PROJECT_ROOT.parent / "a-share-factor-engine-v6" / "artifacts" / "panel" / "panel.parquet"
+from bridge.paths import (
+    configured_upstream_path,
+    require_upstream_root,
+    upstream_path,
+    validate_startup_or_exit,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PANEL = configured_upstream_path("v6", "artifacts", "panel", "panel.parquet")
 DEFAULT_OUT = PROJECT_ROOT / "data" / "aurumq_factors_sample.parquet"
 
 
@@ -93,8 +97,9 @@ def compute_factors(
     *,
     shares_path: Path | str | None = None,
 ) -> pd.DataFrame:
-    if str(AURUMQ_ROOT / "src") not in sys.path:
-        sys.path.insert(0, str(AURUMQ_ROOT / "src"))
+    aurumq_root = require_upstream_root("aurumq")
+    if str(aurumq_root / "src") not in sys.path:
+        sys.path.insert(0, str(aurumq_root / "src"))
 
     if shares_path is not None:
         from bridge.refdata import shares_to_market_cap
@@ -144,14 +149,16 @@ def compute_factors(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Compute aurumq-rl built-in factors")
-    parser.add_argument("--panel", default=str(DEFAULT_PANEL))
+    parser.add_argument("--panel", default=None)
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--families", default="alpha101", help="comma separated: alpha101,gtja191")
     parser.add_argument("--codes", default=None, help="comma separated codes for a smoke run")
     parser.add_argument("--shares", default=None, help="baostock shares PIT parquet")
     args = parser.parse_args()
 
-    panel = pd.read_parquet(args.panel)
+    validate_startup_or_exit(("v6", "aurumq"))
+    panel_path = args.panel or upstream_path("v6", "artifacts", "panel", "panel.parquet")
+    panel = pd.read_parquet(panel_path)
     panel["date"] = pd.to_datetime(panel["date"], errors="raise")
     panel["code"] = panel["code"].astype(str).str.zfill(6)
     if args.codes:

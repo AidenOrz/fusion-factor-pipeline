@@ -21,6 +21,7 @@ from bridge.data import (
     require_market_cap,
 )
 from bridge.ops import FactorEvaluationError, group_rank, sanitize, ts_corr
+from bridge.paths import validate_startup_or_exit
 
 
 def expect_raises(label: str, fn, exc_type) -> None:
@@ -33,10 +34,10 @@ def expect_raises(label: str, fn, exc_type) -> None:
 
 
 def main() -> int:
-    workspace = Path(__file__).resolve().parents[2]
+    validate_startup_or_exit(("kline",))
 
     # ---- 1. vwap unit: real local row must pass after lots->shares -------
-    frame = load_kline_panel(workspace / "a-share-kline-data", codes=["000001"], limit=1)
+    frame = load_kline_panel(codes=["000001"], limit=1)
     row = frame.iloc[0]
     ratio = row["vwap"] / row["close"]
     assert 0.2 < ratio < 5.0, f"vwap unit check failed on real row: ratio={ratio}"

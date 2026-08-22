@@ -30,16 +30,16 @@ if __package__ in (None, ""):
 
 from bridge.benchmark import attach_forward_returns, load_index, ndcg_at_k, ndcg_random_baseline
 from bridge.factor_selection import daily_ic
+from bridge.paths import configured_upstream_path, upstream_path, validate_startup_or_exit
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PANEL = PROJECT_ROOT / "data" / "panel_fusion.parquet"
-DEFAULT_CANDIDATES = (
-    PROJECT_ROOT.parent
-    / "a-share-factor-engine-v6"
-    / "artifacts"
-    / "m5_v2_mechanism_diagnostic"
-    / "regime_aligned_v21"
-    / "l1b_candidates_with_v2_outcomes.csv"
+DEFAULT_CANDIDATES = configured_upstream_path(
+    "v6",
+    "artifacts",
+    "m5_v2_mechanism_diagnostic",
+    "regime_aligned_v21",
+    "l1b_candidates_with_v2_outcomes.csv",
 )
 DEFAULT_OUT_DIR = PROJECT_ROOT / "runs" / "gbdt_walkforward"
 
@@ -51,14 +51,26 @@ EVALUATION_STAGES = ("selection_ablation", "acceptance")
 PRIMARY_NDCG_KS = (5, 20)
 
 
-def load_candidates(path: Path | str = DEFAULT_CANDIDATES) -> pd.DataFrame:
+def load_candidates(path: Path | str | None = None) -> pd.DataFrame:
+    path = (
+        Path(path)
+        if path is not None
+        else upstream_path(
+            "v6",
+            "artifacts",
+            "m5_v2_mechanism_diagnostic",
+            "regime_aligned_v21",
+            "l1b_candidates_with_v2_outcomes.csv",
+        )
+    )
     frame = pd.read_csv(path, dtype={"code": str}, encoding="utf-8-sig")
     frame["date"] = pd.to_datetime(frame["date"], errors="raise")
     frame["code"] = frame["code"].str.zfill(6)
     return frame.sort_values(["date", "code"]).reset_index(drop=True)
 
 
-def load_fusion_panel(path: Path | str = DEFAULT_PANEL) -> pd.DataFrame:
+def load_fusion_panel(path: Path | str | None = None) -> pd.DataFrame:
+    path = Path(path) if path is not None else DEFAULT_PANEL
     frame = pd.read_parquet(path)
     frame["date"] = pd.to_datetime(frame["date"], errors="raise")
     frame["code"] = frame["code"].astype(str).str.zfill(6)
@@ -574,7 +586,7 @@ def write_report(result: dict[str, Any], out_dir: Path | str) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Purged walk-forward GBDT judge")
     parser.add_argument("--panel", default=str(DEFAULT_PANEL))
-    parser.add_argument("--candidates", default=str(DEFAULT_CANDIDATES))
+    parser.add_argument("--candidates", default=None)
     parser.add_argument("--features-file", default=None)
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--target", default="EXRET20")
@@ -589,16 +601,8 @@ def main() -> int:
         default=None,
         help="exclusive evaluation cutoff when the features file has no matching selection metadata",
     )
-    parser.add_argument(
-        "--daily-panel",
-        default=str(
-            PROJECT_ROOT.parent / "a-share-factor-engine-v6" / "artifacts" / "panel" / "panel.parquet"
-        ),
-    )
-    parser.add_argument(
-        "--index",
-        default=str(PROJECT_ROOT.parent / "a-share-kline-data" / "_bench_000001SH.csv"),
-    )
+    parser.add_argument("--daily-panel", default=None)
+    parser.add_argument("--index", default=None)
     parser.add_argument(
         "--mode",
         choices=["static-calibration", "walk-forward", "both"],
@@ -606,7 +610,20 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    candidates = load_candidates(args.candidates)
+    validate_startup_or_exit(("v6", "kline"))
+    candidates_path = args.candidates or upstream_path(
+        "v6",
+        "artifacts",
+        "m5_v2_mechanism_diagnostic",
+        "regime_aligned_v21",
+        "l1b_candidates_with_v2_outcomes.csv",
+    )
+    daily_panel_path = args.daily_panel or upstream_path(
+        "v6", "artifacts", "panel", "panel.parquet"
+    )
+    index_path = args.index or upstream_path("kline", "_bench_000001SH.csv")
+
+    candidates = load_candidates(candidates_path)
     calibration = binding_calibration(candidates)
     if args.mode in ("static-calibration", "both"):
         print(json.dumps(calibration, ensure_ascii=False, indent=2, sort_keys=True))
@@ -638,10 +655,10 @@ def main() -> int:
                 "walk-forward remains descriptive only",
                 file=sys.stderr,
             )
-        daily = pd.read_parquet(args.daily_panel)
+        daily = pd.read_parquet(daily_panel_path)
         daily["date"] = pd.to_datetime(daily["date"], errors="raise")
         daily["code"] = daily["code"].astype(str).str.zfill(6)
-        daily_returns = attach_forward_returns(daily, load_index(args.index))
+        daily_returns = attach_forward_returns(daily, load_index(index_path))
         result = walk_forward_gbdt(
             panel,
             feature_columns,

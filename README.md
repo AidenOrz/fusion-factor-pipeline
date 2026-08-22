@@ -43,6 +43,20 @@ fusion-factor-pipeline/
 - [yupoet/aurumq-rl](https://github.com/yupoet/aurumq-rl)
 - [Miasyster/QuantGPT](https://github.com/Miasyster/QuantGPT)（本地 fork：`AidenOrz/QuantGPT`）
 
+## 上游路径
+
+运行时通过环境变量指定兄弟仓库和行情数据目录，程序启动时会校验路径及关键标志文件，不再根据当前目录层级隐式回退：
+
+```powershell
+$env:A_SHARE_FACTOR_ENGINE_V6_ROOT = 'C:\path\to\a-share-factor-engine-v6'
+$env:AURUMQ_RL_ROOT = 'C:\path\to\aurumq-rl'
+$env:QUANTGPT_ROOT = 'C:\path\to\QuantGPT'
+$env:A_SHARE_KLINE_DATA_ROOT = 'C:\path\to\a-share-kline-data'
+python -m bridge.paths
+```
+
+完整说明见 [`docs/UPSTREAM_ENVIRONMENT.md`](docs/UPSTREAM_ENVIRONMENT.md)。
+
 ## 5. 当前进展
 
 - [x] P0 数据底座 + 四数据坑断言（`tests/run_p0_smoke.py` 全过）。

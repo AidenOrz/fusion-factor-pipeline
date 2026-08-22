@@ -28,20 +28,18 @@ from bridge.feature_engineering import (
 )
 from bridge.ops import FactorEvaluationError, evaluate_builtin, sanitize
 from bridge.labels import attach_cross_sectional_labels
+from bridge.paths import (
+    configured_upstream_path,
+    require_upstream_root,
+    upstream_path,
+    validate_startup_or_exit,
+)
 from bridge.universe import DEFAULT_MCAP, attach_universe_masks, universe_summary
 
-WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_EVENTS = (
-    WORKSPACE_ROOT
-    / "a-share-factor-engine-v6"
-    / "artifacts"
-    / "signals_m6"
-    / "events.parquet"
+DEFAULT_EVENTS = configured_upstream_path(
+    "v6", "artifacts", "signals_m6", "events.parquet"
 )
-DEFAULT_PANEL = (
-    WORKSPACE_ROOT / "a-share-factor-engine-v6" / "artifacts" / "panel" / "panel.parquet"
-)
-QUANTGPT_ROOT = WORKSPACE_ROOT / "QuantGPT"
+DEFAULT_PANEL = configured_upstream_path("v6", "artifacts", "panel", "panel.parquet")
 
 MISSING_RATE_LIMIT = 0.20
 EXPRESSION_FEATURES = [
@@ -52,7 +50,10 @@ EXPRESSION_FEATURES = [
 ]
 
 
-def load_events(events_path: Path | str = DEFAULT_EVENTS) -> pd.DataFrame:
+def load_events(events_path: Path | str | None = None) -> pd.DataFrame:
+    events_path = Path(events_path) if events_path is not None else upstream_path(
+        "v6", "artifacts", "signals_m6", "events.parquet"
+    )
     frame = pd.read_parquet(events_path)
     frame["date"] = pd.to_datetime(frame["date"], errors="raise")
     frame["code"] = frame["code"].astype(str).str.zfill(6)
@@ -82,7 +83,10 @@ def attach_vwap_and_contract(frame: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def attach_industry(frame: pd.DataFrame, panel_path: Path | str = DEFAULT_PANEL) -> pd.DataFrame:
+def attach_industry(frame: pd.DataFrame, panel_path: Path | str | None = None) -> pd.DataFrame:
+    panel_path = Path(panel_path) if panel_path is not None else upstream_path(
+        "v6", "artifacts", "panel", "panel.parquet"
+    )
     panel = pd.read_parquet(
         panel_path,
         columns=["date", "code", "industry"],
@@ -115,8 +119,9 @@ def evaluate_expression(frame: pd.DataFrame, spec: dict[str, Any]) -> pd.Series:
 
 
 def _evaluate_quantgpt(frame: pd.DataFrame, expression: str, expression_id: str) -> pd.Series:
-    if str(QUANTGPT_ROOT) not in sys.path:
-        sys.path.insert(0, str(QUANTGPT_ROOT))
+    quantgpt_root = require_upstream_root("quantgpt")
+    if str(quantgpt_root) not in sys.path:
+        sys.path.insert(0, str(quantgpt_root))
     try:
         from quantgpt.expression_parser import parse_expression
     except Exception as exc:  # pragma: no cover - environment dependent
@@ -140,8 +145,11 @@ def _evaluate_quantgpt(frame: pd.DataFrame, expression: str, expression_id: str)
     return pd.Series(np.asarray(values, dtype=float), index=frame.index)
 
 
-def build_daily_feature_frame(panel_path: Path | str = DEFAULT_PANEL) -> pd.DataFrame:
+def build_daily_feature_frame(panel_path: Path | str | None = None) -> pd.DataFrame:
     """Compute time-series expressions on the FULL daily panel, not on sparse events."""
+    panel_path = Path(panel_path) if panel_path is not None else upstream_path(
+        "v6", "artifacts", "panel", "panel.parquet"
+    )
     panel = pd.read_parquet(panel_path)
     panel["date"] = pd.to_datetime(panel["date"], errors="raise")
     panel["code"] = panel["code"].astype(str).str.zfill(6)
@@ -167,8 +175,8 @@ def build_daily_feature_frame(panel_path: Path | str = DEFAULT_PANEL) -> pd.Data
 def build_fusion_panel(
     expressions: list[dict[str, Any]],
     *,
-    events_path: Path | str = DEFAULT_EVENTS,
-    panel_path: Path | str = DEFAULT_PANEL,
+    events_path: Path | str | None = None,
+    panel_path: Path | str | None = None,
     out_path: Path | str,
     shares_path: Path | str | None = None,
     mcap_path: Path | str | None = DEFAULT_MCAP,
@@ -182,6 +190,8 @@ def build_fusion_panel(
 ) -> dict[str, Any]:
     if scope not in {"full_market", "events"}:
         raise ValueError("scope must be 'full_market' or 'events'")
+    if panel_path is None:
+        panel_path = upstream_path("v6", "artifacts", "panel", "panel.parquet")
     daily = build_daily_feature_frame(panel_path)
     if shares_path is not None:
         from bridge.refdata import shares_to_market_cap
@@ -251,6 +261,8 @@ def build_fusion_panel(
         if add_labels:
             frame = attach_cross_sectional_labels(frame)
     else:
+        if events_path is None:
+            events_path = upstream_path("v6", "artifacts", "signals_m6", "events.parquet")
         frame = load_events(events_path)
     merge_keys = ["date", "code"]
     available = [
@@ -407,8 +419,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build the fusion factor panel")
     parser.add_argument("--expressions", default="config/expressions.json")
     parser.add_argument("--out", default="data/panel_fusion_full_market.parquet")
-    parser.add_argument("--events", default=str(DEFAULT_EVENTS))
-    parser.add_argument("--panel", default=str(DEFAULT_PANEL))
+    parser.add_argument("--events", default=None)
+    parser.add_argument("--panel", default=None)
     parser.add_argument("--shares", default=None)
     parser.add_argument("--mcap", default=str(DEFAULT_MCAP))
     parser.add_argument(
@@ -446,6 +458,12 @@ def main() -> int:
     args = parser.parse_args()
 
     specs = load_expression_specs(args.expressions)
+    required = ["v6"]
+    if any(spec.get("engine", "builtin") == "quantgpt" for spec in specs):
+        required.append("quantgpt")
+    validate_startup_or_exit(required)
+    events_path = args.events or upstream_path("v6", "artifacts", "signals_m6", "events.parquet")
+    panel_path = args.panel or upstream_path("v6", "artifacts", "panel", "panel.parquet")
     extra_factors = (
         [Path(item.strip()) for item in args.extra_factors.split(",") if item.strip()]
         if args.extra_factors
@@ -479,8 +497,8 @@ def main() -> int:
         )
     result = build_fusion_panel(
         specs,
-        events_path=args.events,
-        panel_path=args.panel,
+        events_path=events_path,
+        panel_path=panel_path,
         out_path=args.out,
         shares_path=args.shares,
         mcap_path=args.mcap,
