@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
@@ -27,6 +27,140 @@ DEFAULT_FEATURES = PROJECT_ROOT / "config" / "factor_pool_v2_manual_review_featu
 def _project_path(value: str | Path) -> Path:
     path = Path(value)
     return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def _parquet_columns(path: Path) -> list[str]:
+    """Read a parquet schema without materialising a multi-GB factor file."""
+    try:
+        import pyarrow.parquet as pq
+
+        return list(pq.ParquetFile(path).schema.names)
+    except Exception:
+        return list(pd.read_parquet(path, engine="auto").columns)
+
+
+def _merge_factor_files(
+    panel: pd.DataFrame,
+    factor_paths: Sequence[Path | str],
+    required_columns: Sequence[str],
+) -> tuple[pd.DataFrame, list[str]]:
+    """Attach requested external columns with explicit key joins.
+
+    The full-market panel contains the base/v6 fields but not the complete
+    Alpha101/GTJA191 output.  Reading only the requested columns and joining
+    on ``(date, code)`` avoids positional alignment and keeps this materializer
+    compatible with the selection panel contract.
+    """
+    needed = {str(column) for column in required_columns if str(column) not in panel.columns}
+    if not needed:
+        return panel, []
+    paths = [_project_path(path) for path in factor_paths]
+    if not paths:
+        raise ValueError(
+            "panel is missing selected factor columns and pool.source.factor_files is empty: "
+            f"{sorted(needed)}"
+        )
+
+    file_columns: list[tuple[Path, list[str]]] = []
+    unresolved = set(needed)
+    for path in paths:
+        if not path.is_file():
+            raise FileNotFoundError(f"factor parquet does not exist: {path}")
+        available = set(_parquet_columns(path))
+        selected = sorted(unresolved.intersection(available))
+        if selected:
+            file_columns.append((path, selected))
+            unresolved.difference_update(selected)
+    if unresolved:
+        raise ValueError(
+            "external factor files do not contain required columns: "
+            f"{sorted(unresolved)}"
+        )
+
+    keys = panel[["date", "code"]].copy()
+    keys["date"] = pd.to_datetime(keys["date"], errors="raise")
+    keys["code"] = keys["code"].astype(str).str.zfill(6)
+    if keys.duplicated(["date", "code"]).any():
+        raise ValueError("panel has duplicate (date, code) keys")
+
+    try:
+        import duckdb
+
+        connection = duckdb.connect(database=":memory:")
+        connection.register("pool_keys", keys)
+        selections = ["k.date", "k.code"]
+        joins: list[str] = []
+        for index, (path, columns) in enumerate(file_columns):
+            alias = f"f{index}"
+            duplicate = connection.execute(
+                "SELECT 1 FROM read_parquet(?) GROUP BY date, code "
+                "HAVING COUNT(*) > 1 LIMIT 1",
+                [str(path)],
+            ).fetchall()
+            if duplicate:
+                connection.close()
+                raise ValueError(f"factor parquet has duplicate (date, code) keys: {path}")
+            joins.append(
+                f"LEFT JOIN read_parquet(?) AS {alias} ON "
+                f"CAST({alias}.date AS DATE) = CAST(k.date AS DATE) "
+                f"AND LPAD(CAST({alias}.code AS VARCHAR), 6, '0') = CAST(k.code AS VARCHAR)"
+            )
+            selections.extend(f'{alias}."{column}" AS "{column}"' for column in columns)
+        query = "SELECT " + ", ".join(selections) + " FROM pool_keys AS k " + " ".join(joins)
+        factor = connection.execute(
+            query, [str(path) for path, _ in file_columns]
+        ).fetch_df()
+        connection.close()
+    except ImportError:
+        factor = keys.copy()
+        for path, columns in file_columns:
+            source = pd.read_parquet(path, columns=["date", "code", *columns])
+            source["date"] = pd.to_datetime(source["date"], errors="raise")
+            source["code"] = source["code"].astype(str).str.zfill(6)
+            if source.duplicated(["date", "code"]).any():
+                raise ValueError(f"factor parquet has duplicate (date, code) keys: {path}")
+            factor = factor.merge(
+                source, on=["date", "code"], how="left", validate="one_to_one"
+            )
+
+    factor["date"] = pd.to_datetime(factor["date"], errors="raise")
+    factor["code"] = factor["code"].astype(str).str.zfill(6)
+    if factor.duplicated(["date", "code"]).any():
+        raise ValueError("factor parquet files contain duplicate (date, code) keys")
+    merged = panel.merge(
+        factor, on=["date", "code"], how="left", validate="one_to_one", sort=False
+    )
+    return merged, sorted(needed)
+
+
+def _validate_pool_scope(panel: pd.DataFrame, pool: dict[str, Any]) -> None:
+    """Reject a B2 pool when it is accidentally pointed at a legacy panel."""
+    scope = pool.get("scope")
+    if not scope:
+        return
+    expected = {
+        "panel_scope": "full_market",
+        "universe": "b2",
+        "target": "y_neutral_rank20_b2",
+    }
+    for key, value in expected.items():
+        if scope.get(key) != value:
+            raise ValueError(
+                f"manual pool scope must use {key}={value!r}, got {scope.get(key)!r}"
+            )
+    required = {"panel_scope", "universe_b2", "y_neutral_rank20_b2"}
+    missing = sorted(required.difference(panel.columns))
+    if missing:
+        raise ValueError(
+            "manual pool requires the full-market B2 panel contract; "
+            f"missing columns: {missing}"
+        )
+    scope_values = panel["panel_scope"].dropna().astype(str).str.lower().unique()
+    if set(scope_values) != {"full_market"}:
+        raise ValueError(
+            "manual pool refuses non-full-market panel_scope values: "
+            f"{sorted(scope_values)}"
+        )
 
 
 def load_pool(path: Path | str = DEFAULT_POOL) -> dict[str, Any]:
@@ -45,6 +179,10 @@ def load_pool(path: Path | str = DEFAULT_POOL) -> dict[str, Any]:
         raise ValueError("manual factor pool must contain manual_candidates")
     output_columns: set[str] = set()
     source_columns: set[str] = set()
+    approval_policy = payload.get("approval_policy", {})
+    require_human_approval = bool(
+        approval_policy.get("require_explicit_human_approval", False)
+    )
     for candidate in candidates:
         required = {"source_column", "output_column", "direction", "transform"}
         missing = required.difference(candidate)
@@ -60,6 +198,15 @@ def load_pool(path: Path | str = DEFAULT_POOL) -> dict[str, Any]:
         if transform != expected_transform:
             raise ValueError(
                 f"manual transform for {source!r} must be {expected_transform!r}, got {transform!r}"
+            )
+        if require_human_approval and candidate.get("human_approved") is not True:
+            raise ValueError(
+                f"manual candidate {source!r} must carry human_approved=true"
+            )
+        decision = str(candidate.get("decision", "")).lower()
+        if decision and decision not in {f"register_{direction}", "register"}:
+            raise ValueError(
+                f"manual candidate decision for {source!r} does not match {direction!r}: {decision!r}"
             )
         if source in source_columns:
             raise ValueError(f"duplicate manual source column: {source}")
@@ -106,7 +253,14 @@ def resolve_feature_columns(
     base = [column for column in selected if column not in manual_required]
     candidates = list(pool["manual_candidates"])
     candidate_sources = [str(item["source_column"]) for item in candidates]
-    missing_review_rows = sorted(set(candidate_sources).difference(manual_required))
+    explicitly_approved = {
+        str(item["source_column"])
+        for item in candidates
+        if item.get("human_approved") is True
+    }
+    missing_review_rows = sorted(
+        set(candidate_sources).difference(manual_required | explicitly_approved)
+    )
     if missing_review_rows:
         raise ValueError(
             "manual candidates must correspond to manual_review_required rows: "
@@ -134,10 +288,26 @@ def materialize_manual_pool(
     pool = load_pool(pool_path)
     feature_columns, candidates, stats = resolve_feature_columns(pool, pool_path=pool_path)
     panel = pd.read_parquet(panel_path)
+    _validate_pool_scope(panel, pool)
+    base_columns = feature_columns[: len(feature_columns) - len(candidates)]
     source_columns = [str(item["source_column"]) for item in candidates]
+    factor_files = pool.get("source", {}).get("factor_files", [])
+    if not isinstance(factor_files, list) or not all(
+        isinstance(path, (str, Path)) for path in factor_files
+    ):
+        raise ValueError("pool.source.factor_files must be a list of paths")
+    panel, joined_columns = _merge_factor_files(
+        panel,
+        factor_files,
+        [*base_columns, *source_columns],
+    )
     missing = sorted(set(source_columns).difference(panel.columns))
-    if missing:
-        raise ValueError(f"manual factor sources missing from panel: {missing}")
+    missing_base = sorted(set(base_columns).difference(panel.columns))
+    if missing or missing_base:
+        raise ValueError(
+            "manual pool sources missing after factor joins: "
+            f"candidates={missing}, base_features={missing_base}"
+        )
     for candidate in candidates:
         source = str(candidate["source_column"])
         output = str(candidate["output_column"])
@@ -157,6 +327,8 @@ def materialize_manual_pool(
         "panel_path": str(out_panel),
         "features_path": str(features_path),
         "manual_output_columns": [str(item["output_column"]) for item in candidates],
+        "external_factor_files": [str(_project_path(path)) for path in factor_files],
+        "external_columns_joined": joined_columns,
         "automatic_direction_flip": False,
     }
 

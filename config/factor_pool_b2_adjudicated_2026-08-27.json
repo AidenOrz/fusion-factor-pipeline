@@ -1,0 +1,232 @@
+{
+  "schema_version": 2,
+  "status": "manual_confirmed_b2_candidate_pool",
+  "decision_date": "2026-08-27",
+  "decision_record": "docs/DIRECTION_ADJUDICATION_ABC_2026-08-27_kimi.xlsx",
+  "scope": {
+    "panel_scope": "full_market",
+    "universe": "b2",
+    "target": "y_neutral_rank20_b2",
+    "selection_period": "2023-06-30..2024-09-12",
+    "evaluation_start_after_label_gap": "2024-10-22",
+    "label_gap_trading_days": 20
+  },
+  "source": {
+    "selected_features_file": "runs/factor_selection_v3_b2_neutral_selection_full_322/selected_features.json",
+    "direction_review_file": "runs/factor_selection_v3_b2_neutral_selection_full_322/direction_review.csv",
+    "factor_files": [
+      "data/quantgpt_full_market.parquet",
+      "data/aurumq_alpha101_full.parquet",
+      "data/aurumq_gtja191_full.parquet"
+    ]
+  },
+  "output": {
+    "panel_file": "data/panel_fusion_b2_adjudicated_2026-08-27.parquet",
+    "features_file": "config/factor_pool_b2_adjudicated_2026-08-27_features.json"
+  },
+  "activation": {
+    "explicit_cli_only": true,
+    "automatic_direction_flip": false,
+    "raw_expression_config_unchanged": true,
+    "selection_period_rows_used_for_training": false
+  },
+  "approval_policy": {
+    "require_explicit_human_approval": true,
+    "source_workbook_is_authoritative_for_this_pool": true,
+    "approved_count": 9,
+    "approved_long_count": 4,
+    "approved_short_count": 5
+  },
+  "base_feature_policy": {
+    "source": "selected_features_file",
+    "exclude_manual_review_required": true,
+    "excluded_review_statuses": [
+      "regime_sensitive",
+      "unstable",
+      "insufficient_data"
+    ],
+    "reason": "105 个 B2 代表先作为基线；新增方向只接受本裁决文件明确批准的候选。"
+  },
+  "manual_candidates": [
+    {
+      "source_column": "alpha004",
+      "output_column": "manual__alpha004__long",
+      "direction": "long",
+      "transform": "identity",
+      "human_approved": true,
+      "decision": "register_long",
+      "family": "alpha101",
+      "reason": "B2 选择期 IC +0.0188、符号一致性 0.90；人工决定可注册 long。"
+    },
+    {
+      "source_column": "alpha055",
+      "output_column": "manual__alpha055__long",
+      "direction": "long",
+      "transform": "identity",
+      "human_approved": true,
+      "decision": "register_long",
+      "family": "alpha101",
+      "reason": "B2 选择期 IC +0.0284、符号一致性 1.00；与 gtja_176 为镜像，保留本因子。"
+    },
+    {
+      "source_column": "alpha059",
+      "output_column": "manual__alpha059__long",
+      "direction": "long",
+      "transform": "identity",
+      "human_approved": true,
+      "decision": "register_long",
+      "family": "alpha101",
+      "reason": "B2 选择期 IC +0.0285、符号一致性 0.96；重新注册 long。"
+    },
+    {
+      "source_column": "gtja_090",
+      "output_column": "manual__gtja_090__long",
+      "direction": "long",
+      "transform": "identity",
+      "human_approved": true,
+      "decision": "register_long",
+      "family": "gtja191",
+      "reason": "B2 选择期 IC +0.0351、符号一致性 1.00；与 gtja_064 高相关，留给后续组内消融比较。"
+    },
+    {
+      "source_column": "alpha_qg_corr_pv_10",
+      "output_column": "manual__alpha_qg_corr_pv_10__short",
+      "direction": "short",
+      "transform": "negate",
+      "human_approved": true,
+      "decision": "register_short",
+      "family": "starter",
+      "info_type": "correlation",
+      "reason": "B2 选择期 IC -0.0533、符号一致性 1.00；与 f001/f005/f006 的绝对相关不超过 0.275，作为独立量价相关候选。"
+    },
+    {
+      "source_column": "alpha_qg_f001",
+      "output_column": "manual__alpha_qg_f001__short",
+      "direction": "short",
+      "transform": "negate",
+      "human_approved": true,
+      "decision": "register_short",
+      "family": "llm",
+      "info_type": "momentum",
+      "reason": "B2 选择期 IC -0.0279；人工批准将注册方向改为 short，保留与 f008 的替代关系。"
+    },
+    {
+      "source_column": "alpha_qg_f005",
+      "output_column": "manual__alpha_qg_f005__short",
+      "direction": "short",
+      "transform": "negate",
+      "human_approved": true,
+      "decision": "register_short",
+      "family": "llm",
+      "info_type": "volume_vwap",
+      "reason": "B2 选择期 IC -0.0314、符号一致性 0.96；与 gtja_168 为绝对相关 1.0 的镜像候选。"
+    },
+    {
+      "source_column": "alpha_qg_f006",
+      "output_column": "manual__alpha_qg_f006__short",
+      "direction": "short",
+      "transform": "negate",
+      "human_approved": true,
+      "decision": "register_short",
+      "family": "llm",
+      "info_type": "volume_vwap",
+      "reason": "B2 选择期 IC -0.0877、符号一致性 0.91；与 gtja_124/vwap_dev_10 高相关，后续消融比较代表性。"
+    },
+    {
+      "source_column": "alpha_qg_f008",
+      "output_column": "manual__alpha_qg_f008__short",
+      "direction": "short",
+      "transform": "negate",
+      "human_approved": true,
+      "decision": "register_short",
+      "family": "llm",
+      "info_type": "momentum_reversal",
+      "reason": "B2 选择期 IC -0.0435、符号一致性 0.96；人工决定按 short 注册，不能以未达 0.8 的 f001 相关静默删除。"
+    }
+  ],
+  "watch_only": [
+    {
+      "factor": "alpha052",
+      "reason": "B2 近期/历史信号未满足 watch-only 升级规则；继续观察，不进入候选。"
+    },
+    {
+      "factor": "gtja_183",
+      "reason": "B2 近期/历史信号未满足 watch-only 升级规则；继续观察，不进入候选。"
+    }
+  ],
+  "drop_policy": {
+    "legacy_conflict_or_regime_or_unstable": [
+      "alpha091",
+      "alpha093",
+      "gtja_001",
+      "gtja_058",
+      "gtja_073",
+      "gtja_125",
+      "gtja_176",
+      "gtja_181",
+      "alpha066",
+      "alpha082",
+      "alpha097",
+      "gtja_008",
+      "gtja_009",
+      "gtja_014",
+      "gtja_017",
+      "gtja_021",
+      "gtja_024",
+      "gtja_035",
+      "gtja_103",
+      "gtja_106",
+      "gtja_116",
+      "alpha032",
+      "alpha037",
+      "alpha039",
+      "gtja_149",
+      "gtja_165",
+      "gtja_184",
+      "alpha_qg_amt_ratio_5",
+      "alpha_qg_f010",
+      "alpha_qg_mom_20",
+      "alpha_qg_vwap_dev_10"
+    ],
+    "research_observation_not_candidate": [
+      "alpha031",
+      "gtja_055",
+      "gtja_068",
+      "gtja_138",
+      "gtja_147",
+      "gtja_151",
+      "gtja_170"
+    ],
+    "note": "剔除只影响本候选池，不删除原始面板列或表达式注册。"
+  },
+  "ablation_registration": {
+    "classification": "post_hoc_descriptive_only",
+    "grouping_manifest": "docs/B2_ABLATION_GROUPING_2026-08-27.csv",
+    "selection_only": true,
+    "selection_end": "2024-09-12",
+    "label_gap_trading_days": 20,
+    "folds": 3,
+    "seeds": [42, 43, 44],
+    "family_groups": ["alpha101", "gtja191", "llm", "starter"],
+    "info_type_groups_require_manual_metadata_review": true,
+    "primary_models": [
+      {
+        "id": "huber_b2_raw_rank",
+        "estimator": "lightgbm.LGBMRegressor",
+        "objective": "huber",
+        "target": "y_raw_rank20_b2"
+      },
+      {
+        "id": "lambdarank_b2_neutral_rank",
+        "estimator": "lightgbm.LGBMRanker",
+        "objective": "lambdarank",
+        "target": "y_neutral_rank20_b2"
+      }
+    ],
+    "noise_band": {
+      "metric": "paired_fold_seed_ic_difference_std",
+      "registration_required_before_results": true,
+      "deletion_rule": "remove a group only when both primary models stay within one registered noise standard deviation"
+    }
+  }
+}

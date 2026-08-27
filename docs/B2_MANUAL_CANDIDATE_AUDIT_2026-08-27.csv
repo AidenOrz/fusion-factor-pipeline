@@ -1,0 +1,10 @@
+factor,decision,direction,transform,family,nearest_existing_factor,max_abs_rank_corr,duplicate_or_replacement_note
+alpha004,register_long,long,identity,alpha101,alpha_custom_decaylinear_mom,0.782211,"低于 0.8 去冗余阈值；保留为人工批准候选"
+alpha055,register_long,long,identity,alpha101,gtja_064,0.482382,"与 gtja_176 为 -1.0 镜像；已明确保留 alpha055、剔除 gtja_176"
+alpha059,register_long,long,identity,alpha101,alpha058,0.771713,"低于 0.8 去冗余阈值；保留为人工批准候选"
+gtja_090,register_long,long,identity,gtja191,gtja_064,0.887123,"与 gtja_064 高相关；不静默删除，交由预注册组内消融比较"
+alpha_qg_corr_pv_10,register_short,short,negate,starter,alpha040,0.760549,"与 f001/f005/f006 的绝对相关不超过 0.275；独立量价相关候选"
+alpha_qg_f001,register_short,short,negate,llm,alpha_custom_decaylinear_mom,0.855004,"与现有动量代表高相关；保留人工批准方向，交由消融比较"
+alpha_qg_f005,register_short,short,negate,llm,gtja_168,1.000000,"与 gtja_168 为同信息镜像；作为人工批准候选记录，不重复静默计权"
+alpha_qg_f006,register_short,short,negate,llm,gtja_124,0.931398,"与 gtja_124/vwap_dev_10 高相关；保留人工批准候选并比较替代关系"
+alpha_qg_f008,register_short,short,negate,llm,alpha_custom_decaylinear_mom,0.726198,"与 f001 的相关 0.771 未超过 0.8；按人工决定注册 short"

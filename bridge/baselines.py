@@ -38,20 +38,25 @@ def run_huber_baseline(
     *,
     target: str,
     output_name: str,
+    universe: str = "b1",
     n_splits: int = 4,
     gap_days: int = GAP_TRADING_DAYS,
     feature_columns: list[str] | None = None,
 ) -> dict[str, Any]:
+    if universe not in {"b1", "b2", "b3"}:
+        raise ValueError("universe must be one of: b1, b2, b3")
     if "panel_scope" not in panel.columns or not panel["panel_scope"].eq("full_market").all():
         raise ValueError("Huber baselines require panel_scope='full_market'")
-    required = {"date", "code", "universe_b1", "y_excess20", target}
+    required = {"date", "code", f"universe_{universe}", "y_excess20", target}
     missing = required.difference(panel.columns)
     if missing:
         raise ValueError(f"baseline panel missing columns: {sorted(missing)}")
     features = feature_columns or default_features(panel)
     if not features:
         raise ValueError("no baseline features available")
-    work = panel.loc[panel["universe_b1"].fillna(False)].dropna(subset=[target, "y_excess20"]).copy()
+    work = panel.loc[panel[f"universe_{universe}"].fillna(False)].dropna(
+        subset=[target, "y_excess20"]
+    ).copy()
     work[features] = work[features].replace([np.inf, -np.inf], np.nan)
     work = work.sort_values(["date", "code"], kind="mergesort").reset_index(drop=True)
     predictions = pd.Series(np.nan, index=work.index, dtype=float)
@@ -93,6 +98,7 @@ def run_huber_baseline(
         "estimator": "lightgbm.LGBMRegressor",
         "objective": "huber",
         "output_name": output_name,
+        "universe": universe,
         "target": target,
         "features": features,
         "gap_trading_days": gap_days,
@@ -107,16 +113,23 @@ def run_huber_baseline(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a full-market Huber baseline")
     parser.add_argument("--panel", default=str(DEFAULT_PANEL))
-    parser.add_argument("--target", choices=["excess", "raw_rank"], required=True)
+    parser.add_argument("--target", choices=["excess", "raw_rank", "neutral_rank"], required=True)
+    parser.add_argument("--universe", choices=["b1", "b2", "b3"], default="b1")
     parser.add_argument("--out-dir", required=True)
     args = parser.parse_args()
     panel = pd.read_parquet(args.panel)
     panel["date"] = pd.to_datetime(panel["date"], errors="raise")
     target_map = {
         "excess": "y_excess20",
-        "raw_rank": "y_raw_rank20_b1",
+        "raw_rank": f"y_raw_rank20_{args.universe}",
+        "neutral_rank": f"y_neutral_rank20_{args.universe}",
     }
-    result = run_huber_baseline(panel, target=target_map[args.target], output_name=args.target)
+    result = run_huber_baseline(
+        panel,
+        target=target_map[args.target],
+        output_name=args.target,
+        universe=args.universe,
+    )
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     (out / "metrics.json").write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -126,6 +139,7 @@ def main() -> int:
             "# 全市场 Huber 基线",
             "",
             "> 开发集描述性实验，不构成生产批准。",
+            f"- 域：`{result['universe']}`",
             f"- 目标：`{result['target']}`",
             f"- 日均 Spearman IC：{q['mean_daily_spearman_ic']}",
             f"- HAC IC_IR：{q['ic_ir_hac']}",

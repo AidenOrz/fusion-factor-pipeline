@@ -79,3 +79,18 @@ def test_huber_baseline_uses_the_same_full_market_scope():
     assert result["scope"] == "full_market"
     assert result["objective"] == "huber"
     assert result["fold_stability"]["fold_count"] == 3
+
+
+def test_huber_baseline_supports_explicit_b2_neutral_rank_target():
+    panel = _panel()
+    panel["universe_b2"] = True
+    panel["y_neutral_rank20_b2"] = panel["y_raw_rank20_b1"]
+    result = run_huber_baseline(
+        panel,
+        target="y_neutral_rank20_b2",
+        output_name="b2_neutral_rank",
+        universe="b2",
+        feature_columns=["factor"],
+    )
+    assert result["universe"] == "b2"
+    assert result["target"] == "y_neutral_rank20_b2"
