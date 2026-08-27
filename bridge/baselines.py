@@ -61,6 +61,7 @@ def run_huber_baseline(
     work = work.sort_values(["date", "code"], kind="mergesort").reset_index(drop=True)
     predictions = pd.Series(np.nan, index=work.index, dtype=float)
     folds: list[dict[str, Any]] = []
+    fold_seed_quality: list[dict[str, Any]] = []
     for fold, (train_dates, test_dates) in enumerate(make_purged_splits(work["date"], n_splits, gap_days)):
         if not train_dates:
             continue
@@ -78,10 +79,21 @@ def run_huber_baseline(
             )
             daily_sizes = train.groupby("date", sort=False)["code"].transform("size")
             model.fit(train[features], train[target], sample_weight=1.0 / daily_sizes)
-            seed_predictions.append(model.predict(test[features]))
+            seed_prediction = np.asarray(model.predict(test[features]), dtype=float)
+            seed_predictions.append(seed_prediction)
+            seed_frame = test[["date", target]].copy()
+            seed_frame["prediction"] = seed_prediction
+            seed_quality = prediction_quality_summary(seed_frame, "prediction", target)
+            fold_seed_quality.append(
+                {"fold": fold, "seed": seed, "quality": seed_quality}
+            )
         pred = np.mean(np.vstack(seed_predictions), axis=0)
         predictions.loc[test.index] = pred
-        evaluated = test.assign(prediction=pred)
+        evaluated_columns = ["date", "code", target]
+        if "y_excess20" not in evaluated_columns:
+            evaluated_columns.append("y_excess20")
+        evaluated = test[evaluated_columns].copy()
+        evaluated["prediction"] = pred
         folds.append({
             "fold": fold,
             "train_start": str(train["date"].min().date()),
@@ -106,6 +118,7 @@ def run_huber_baseline(
         "evaluated_rows": int(len(evaluated)),
         "overall_quality": prediction_quality_summary(evaluated, "prediction", target),
         "fold_stability": fold_ic_summary(folds),
+        "fold_seed_quality": fold_seed_quality,
         "folds": folds,
     }
 

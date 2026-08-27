@@ -126,6 +126,7 @@ def walk_forward_lambdarank(
     splits = make_purged_splits(work["date"], n_splits=n_splits, gap_days=gap_days)
     predictions = pd.Series(np.nan, index=work.index, dtype=float)
     fold_rows: list[dict[str, Any]] = []
+    fold_seed_quality: list[dict[str, Any]] = []
     importances: dict[str, list[float]] = {feature: [] for feature in features}
 
     for fold, (train_dates, test_dates) in enumerate(splits):
@@ -167,12 +168,20 @@ def walk_forward_lambdarank(
                 group=train_groups,
                 sample_weight=_daily_weights(train),
             )
-            seed_predictions.append(np.asarray(model.predict(x_test), dtype=float))
+            seed_prediction = np.asarray(model.predict(x_test), dtype=float)
+            seed_predictions.append(seed_prediction)
+            seed_frame = test[["date", target]].copy()
+            seed_frame["prediction"] = seed_prediction
+            seed_quality = prediction_quality_summary(seed_frame, "prediction", target)
+            fold_seed_quality.append(
+                {"fold": fold, "seed": seed, "quality": seed_quality}
+            )
             for feature, gain in zip(features, model.feature_importances_, strict=False):
                 importances[feature].append(float(gain))
         test_prediction = np.mean(np.vstack(seed_predictions), axis=0)
         predictions.loc[test.index] = test_prediction
-        evaluated = test.assign(prediction=test_prediction)
+        evaluated = test[["date", "code", target, "y_excess20"]].copy()
+        evaluated["prediction"] = test_prediction
         quality = prediction_quality_summary(evaluated, "prediction", target)
         economics = static_topk_summary(evaluated, "prediction", "y_excess20")
         fold_rows.append(
@@ -207,6 +216,7 @@ def walk_forward_lambdarank(
         "evaluated_rows": int(len(evaluated)),
         "overall_quality": quality,
         "fold_stability": fold_ic_summary(fold_rows),
+        "fold_seed_quality": fold_seed_quality,
         "topk_y_excess20_appendix": static_topk_summary(evaluated, "prediction", "y_excess20"),
         "folds": fold_rows,
         "feature_importance": [
