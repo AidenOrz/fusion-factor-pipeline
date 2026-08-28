@@ -206,7 +206,8 @@ def select_bottom_exclusion(
     _require_columns(panel, ["date", "code", "universe_b2"], "panel")
     if not 0 < exclusion_fraction < 1:
         raise ValueError("exclusion_fraction must be between zero and one")
-    frame = _normalise_keys(predictions).merge(
+    prediction_keys = _normalise_keys(predictions)[["date", "code", "prediction"]]
+    frame = prediction_keys.merge(
         panel[["date", "code", "universe_b2", "y_excess20", "adv20", "float_mcap"]],
         on=["date", "code"], how="left", validate="one_to_one", suffixes=("", "_panel"),
     )
@@ -710,7 +711,8 @@ def _build_signal_trades(
     top_k: int | None = None,
     exclusion_fraction: float = 0.10,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    joined = _normalise_keys(predictions).merge(
+    prediction_keys = _normalise_keys(predictions)[["date", "code", "prediction"]]
+    joined = prediction_keys.merge(
         panel[["date", "code", "universe_b2", "y_excess20", "adv20", "float_mcap"]],
         on=["date", "code"], how="left", validate="one_to_one",
     )
