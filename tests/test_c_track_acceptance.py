@@ -9,6 +9,7 @@ import pytest
 from bridge.c_track_acceptance import (
     _curve_metrics,
     _build_b2_baseline_selection,
+    _build_signal_trades,
     compute_index_benchmarks,
     load_frozen_contract,
     resolve_trade_window,
@@ -55,6 +56,16 @@ def test_select_bottom_exclusion_is_deterministic_and_uses_ceil():
     tied["prediction"] = 1.0
     _, tied_excluded = select_bottom_exclusion(tied, panel, exclusion_fraction=0.1)
     assert tied_excluded.iloc[0]["code"] == "000001"
+
+
+def test_c_track_runtime_path_excludes_lowest_predictions():
+    panel = _panel(dates=1, codes=10)
+    predictions = panel[["date", "code"]].copy()
+    predictions["prediction"] = np.arange(10, dtype=float)
+    selected, excluded = _build_signal_trades(predictions, panel, mode="c_track")
+    assert excluded["code"].tolist() == ["000001"]
+    assert "000001" not in set(selected["code"])
+    assert selected["prediction"].min() == 1.0
 
 
 def test_resolve_trade_window_defers_missing_bar_and_uses_last_price():

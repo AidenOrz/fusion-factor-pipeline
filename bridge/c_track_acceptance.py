@@ -663,19 +663,22 @@ def _build_signal_trades(
     selected_parts: list[pd.DataFrame] = []
     excluded_parts: list[pd.DataFrame] = []
     for date, day in joined.groupby("date", sort=True):
-        ordered = day.sort_values(["prediction", "code"], ascending=[False, True], kind="mergesort")
         if mode == "c_track":
+            # C-track removes the lowest-scored tail; top-k keeps the highest.
+            ordered = day.sort_values(["prediction", "code"], ascending=[True, True], kind="mergesort")
             n_excluded = max(1, int(math.ceil(len(ordered) * exclusion_fraction)))
             selected = ordered.iloc[n_excluded:].copy()
             excluded = ordered.iloc[:n_excluded].copy()
             excluded["signal_role"] = "excluded_bottom"
             excluded_parts.append(excluded)
         elif mode == "top_k":
+            ordered = day.sort_values(["prediction", "code"], ascending=[False, True], kind="mergesort")
             if top_k is None or top_k < 1:
                 raise ValueError("top_k must be positive for top_k mode")
             selected = ordered.iloc[: min(top_k, len(ordered))].copy()
             excluded = ordered.iloc[0:0].copy()
         elif mode == "b2_equal_weight":
+            ordered = day.sort_values(["prediction", "code"], ascending=[False, True], kind="mergesort")
             selected = day.sort_values("code", kind="mergesort").copy()
             excluded = ordered.iloc[0:0].copy()
         else:
