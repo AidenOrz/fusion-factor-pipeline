@@ -1,7 +1,7 @@
 # HANDOFF — 当前稳定点与下一步
 
 > 更新时间：2026-08-28
-> 状态：运行中（观察阶段），无阻塞。
+> 状态：v4 同模型跨标签 LOFO 已完成，等待剪后候选池确认；无阻塞。
 
 ## 1. 最后稳定点
 
@@ -30,18 +30,24 @@
 - [ ] 行业历史 PIT：需交易所/指数公司历史快照或付费数据。
 - [ ] G2 未通过：当前任何因子池在开发集都未稳定跑赢上证指数，不得进 v6 官方锁箱。
 - [x] 2026-08-27 B2 人工裁决已落地为 114 列预注册候选池；物化器已验证全市场键连接、short 变换和旧 events 拒绝。
-- [x] 2026-08-28 selection-only family/info_type 整组消融已完成；结果在 `runs/factor_ablation_v3_b2_2026-08-27/`。
-- [ ] 下一步建议：
-  1. 人工确认 `ablation_report.md` 中可列入移除候选的 `starter` family 和 `capital` 信息类；程序不会自动改配置。
-  2. 若人工冻结变更，生成新的候选特征清单并只在 evaluation 期一次性验证。
-  3. 排序质量稳定后，再做十分位、IC 衰减和 Top-K 验收；所有 selection 结果仍为描述性证据。
+- [x] 2026-08-28 已审阅旧 LOFO 的方向盲区与 LambdaRank 噪声问题；旧结果仍保留为历史证据。
+- [x] 2026-08-28 已准备并登记新实验：`runs/factor_ablation_v4_b2_huber_cross_label_2026-08-28/`，两条主线均为 Huber，仅标签不同。
+- [x] 2026-08-28 已完成 v4 两条完整集基线、family LOFO 和 info-type LOFO；方向字段与组级决策已落盘。
+- [ ] 下一步：
+  1. 人工审阅 `lofo_group_decisions.csv`，先做 family/info-type 交叉重叠审计，不自动删除或翻转方向。
+  2. 按预注册的组内规则形成剪后候选池，明确记录每个被移除因子及其所属组。
+  3. 剪后候选池 vs 当前全集各跑一次冻结确认；只有通过后才进入 evaluation 一次性验证。
+  4. 排序质量稳定前不做 Top-K、十分位或 horizon 结果驱动的再筛选。
 
 ## 4. 恢复入口
 
 ```powershell
 cd C:\Users\Lenovo\Documents\New project\fusion-factor-pipeline
 python tests/run_p0_smoke.py
-python bridge/ablation.py run --phase lofo --group-kind family --out-dir runs/factor_ablation_v3_b2_2026-08-27
+python bridge/ablation.py register --out-dir runs/factor_ablation_v4_b2_huber_cross_label_2026-08-28
+python bridge/ablation.py run --phase baseline --out-dir runs/factor_ablation_v4_b2_huber_cross_label_2026-08-28
+python bridge/ablation.py run --phase lofo --group-kind family --out-dir runs/factor_ablation_v4_b2_huber_cross_label_2026-08-28
+python bridge/ablation.py run --phase lofo --group-kind info_type --out-dir runs/factor_ablation_v4_b2_huber_cross_label_2026-08-28
 python bridge/gbdt.py --panel data/panel_fusion_full.parquet --features-file runs/factor_selection/selected_features_shap.json --mode walk-forward --out-dir runs/gbdt_walkforward_pruned60
 python bridge/dev_lockbox.py status
 ```

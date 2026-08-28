@@ -42,9 +42,14 @@ DEFAULT_PANEL = PROJECT_ROOT / "data" / "panel_fusion_b2_adjudicated_2026-08-27.
 DEFAULT_FEATURES = PROJECT_ROOT / "config" / "factor_pool_b2_adjudicated_2026-08-27_features.json"
 DEFAULT_GROUPING = PROJECT_ROOT / "docs" / "B2_ABLATION_GROUPING_2026-08-27.csv"
 DEFAULT_INFO_REVIEW = PROJECT_ROOT / "docs" / "B2_INFO_TYPE_REVIEW_2026-08-27.csv"
-DEFAULT_OUT = PROJECT_ROOT / "runs" / "factor_ablation_v3_b2_2026-08-27"
+DEFAULT_OUT = PROJECT_ROOT / "runs" / "factor_ablation_v4_b2_huber_cross_label_2026-08-28"
 SELECTION_END = pd.Timestamp("2024-09-12")
 N_SPLITS = 4  # first block has no train set; three evaluated expanding folds
+
+# The v3 run is retained as historical evidence. New registrations use the
+# same estimator across the two labels so a LOFO difference is interpretable
+# as a label comparison rather than a mixture of model and label effects.
+DEFAULT_PRIMARY_MODEL_IDS = ("huber_b2_raw_rank", "huber_b2_neutral_rank")
 
 
 def _path(value: str | Path) -> Path:
@@ -55,6 +60,21 @@ def _path(value: str | Path) -> Path:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _registered_model_ids(manifest: dict[str, Any]) -> tuple[str, ...]:
+    """Return primary model ids while preserving old manifests."""
+    models = manifest.get("primary_models")
+    if not isinstance(models, list) or not models:
+        raise ValueError("experiment manifest must register at least one primary model")
+    if any(not isinstance(item, dict) for item in models):
+        raise ValueError("experiment manifest contains a non-object primary model")
+    model_ids = tuple(str(item.get("id", "")) for item in models)
+    if not model_ids or any(not model_id for model_id in model_ids):
+        raise ValueError("experiment manifest contains an invalid primary model id")
+    if len(model_ids) != len(set(model_ids)):
+        raise ValueError("experiment manifest contains duplicate primary model ids")
+    return model_ids
 
 
 def _read_features(path: str | Path) -> list[str]:
@@ -259,14 +279,15 @@ def register_experiment(features_path: str | Path, grouping_path: str | Path, ou
         "family_groups": sorted(grouping["family"].unique().tolist()),
         "info_type_groups": sorted(grouping["info_type_group"].unique().tolist()),
         "primary_models": [
-            {"id": "huber_b2_raw_rank", "target": "y_raw_rank20_b2", "objective": "huber"},
-            {"id": "lambdarank_b2_neutral_rank", "target": "y_neutral_rank20_b2", "objective": "lambdarank"},
+            {"id": DEFAULT_PRIMARY_MODEL_IDS[0], "target": "y_raw_rank20_b2", "objective": "huber"},
+            {"id": DEFAULT_PRIMARY_MODEL_IDS[1], "target": "y_neutral_rank20_b2", "objective": "huber"},
         ],
         "noise_band": {
             "metric": "paired_fold_seed_ic_difference_std",
             "definition": "std(seed IC - three-seed ensemble IC) across evaluated folds and seeds of the full feature set",
             "ddof": 1,
-            "deletion_rule": "mark a group removable only when both primary model IC deltas are within that model's registered noise std",
+            "delta_sign": "positive means removing the group improves IC; negative means removing the group harms IC",
+            "deletion_rule": "a group is a removal candidate when no primary model shows removal_harms; all indistinguishable remains a removal candidate, while any directional conflict requires manual review",
             "value_registered_after_full_baseline": True,
         },
         "selection_only": True,
@@ -321,9 +342,10 @@ def _run_model(panel: pd.DataFrame, features: list[str], model_id: str, output_d
     metrics_path = output_dir / "metrics.json"
     if metrics_path.is_file():
         return json.loads(metrics_path.read_text(encoding="utf-8"))
-    if model_id == "huber_b2_raw_rank":
+    if model_id in {"huber_b2_raw_rank", "huber_b2_neutral_rank"}:
+        target = "y_raw_rank20_b2" if model_id == "huber_b2_raw_rank" else "y_neutral_rank20_b2"
         result = run_huber_baseline(
-            panel, target="y_raw_rank20_b2", output_name=model_id, universe="b2",
+            panel, target=target, output_name=model_id, universe="b2",
             n_splits=N_SPLITS, gap_days=GAP_TRADING_DAYS, feature_columns=features,
         )
         _write_huber_report(result, output_dir)
@@ -363,10 +385,11 @@ def run_baseline(panel_path: str | Path, features_path: str | Path, output_dir: 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not manifest.get("registered_before_results"):
         raise ValueError("experiment manifest is not marked registered_before_results")
+    model_ids = _registered_model_ids(manifest)
     features = _read_features(features_path)
     panel = load_selection_panel(panel_path, features, selection_end)
     models = {}
-    for model_id in ("huber_b2_raw_rank", "lambdarank_b2_neutral_rank"):
+    for model_id in model_ids:
         models[model_id] = _run_model(panel, features, model_id, output / "baseline" / model_id)
     noise = {model_id: _noise_band(result) for model_id, result in models.items()}
     if any(value is None or not np.isfinite(value) or value <= 0 for value in noise.values()):
@@ -400,6 +423,8 @@ def run_lofo(panel_path: str | Path, features_path: str | Path, grouping_path: s
     features = _read_features(features_path)
     grouping = _read_grouping(grouping_path, features)
     panel = load_selection_panel(panel_path, features, selection_end)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    model_ids = _registered_model_ids(manifest)
     noise_payload = json.loads(noise_path.read_text(encoding="utf-8"))
     full_payload = noise_payload["models"]
     groups: list[tuple[str, str]] = []
@@ -413,14 +438,14 @@ def run_lofo(panel_path: str | Path, features_path: str | Path, grouping_path: s
         reduced = [feature for feature in features if feature not in removed]
         if not reduced:
             raise ValueError(f"removing {kind}={group!r} leaves no features")
-        for model_id in ("huber_b2_raw_rank", "lambdarank_b2_neutral_rank"):
+        for model_id in model_ids:
             run_dir = output / "lofo" / kind / group / model_id
             result = _run_model(panel, reduced, model_id, run_dir)
             full_ic = float(full_payload[model_id]["overall_quality"]["mean_daily_spearman_ic"])
             reduced_ic = result["overall_quality"]["mean_daily_spearman_ic"]
             delta = float(reduced_ic) - full_ic if reduced_ic is not None else None
             sigma = float(full_payload[model_id]["noise_std"])
-            within = delta is not None and abs(delta) <= sigma
+            delta_direction, marginal_contribution = _classify_delta(delta, sigma)
             rows.append({
                 "group_kind": kind,
                 "group": group,
@@ -431,7 +456,9 @@ def run_lofo(panel_path: str | Path, features_path: str | Path, grouping_path: s
                 "reduced_ic": reduced_ic,
                 "delta_ic": delta,
                 "noise_std": sigma,
-                "within_noise_band": bool(within),
+                "delta_direction": delta_direction,
+                "marginal_contribution": marginal_contribution,
+                "within_noise_band": delta_direction == "indistinguishable",
             })
     summary = pd.DataFrame(rows)
     if not summary.empty:
@@ -450,8 +477,79 @@ def run_lofo(panel_path: str | Path, features_path: str | Path, grouping_path: s
         combined = pd.concat([prior, summary], ignore_index=True)
         combined = combined.sort_values(["group_kind", "group", "model"], kind="mergesort")
         combined.to_csv(aggregate_path, index=False, encoding="utf-8-sig")
+        decisions = _group_decisions(combined)
+        decisions.to_csv(output / f"lofo_group_decisions_{group_kind}.csv", index=False, encoding="utf-8-sig")
+        prior_decisions_path = output / "lofo_group_decisions.csv"
+        prior_decisions = pd.read_csv(prior_decisions_path, encoding="utf-8-sig") if prior_decisions_path.is_file() else pd.DataFrame()
+        if not prior_decisions.empty:
+            prior_decisions = prior_decisions.loc[
+                ~prior_decisions.set_index(["group_kind", "group"]).index.isin(
+                    decisions.set_index(["group_kind", "group"]).index
+                )
+            ]
+        combined_decisions = pd.concat([prior_decisions, decisions], ignore_index=True)
+        combined_decisions = combined_decisions.sort_values(["group_kind", "group"], kind="mergesort")
+        combined_decisions.to_csv(prior_decisions_path, index=False, encoding="utf-8-sig")
         _write_ablation_report(combined, output)
     return summary
+
+
+def _classify_delta(delta: float | None, sigma: float | None) -> tuple[str, str]:
+    """Classify LOFO direction using the registered noise band."""
+    try:
+        delta_value = float(delta) if delta is not None else float("nan")
+        sigma_value = float(sigma) if sigma is not None else float("nan")
+    except (TypeError, ValueError):
+        return "invalid", "unknown"
+    if not np.isfinite(delta_value) or not np.isfinite(sigma_value) or sigma_value <= 0:
+        return "invalid", "unknown"
+    if delta_value > sigma_value:
+        return "removal_improves", "negative"
+    if delta_value < -sigma_value:
+        return "removal_harms", "positive"
+    return "indistinguishable", "indistinguishable"
+
+
+def _group_decisions(summary: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate directional LOFO evidence without mutating any config."""
+    required = {"group_kind", "group", "model", "delta_ic", "noise_std"}
+    missing = required.difference(summary.columns)
+    if missing:
+        raise ValueError(f"LOFO summary missing columns: {sorted(missing)}")
+    frame = summary.copy()
+    if "delta_direction" not in frame.columns or "marginal_contribution" not in frame.columns:
+        classified = frame.apply(
+            lambda row: _classify_delta(row.get("delta_ic"), row.get("noise_std")), axis=1
+        )
+        frame["delta_direction"] = [item[0] for item in classified]
+        frame["marginal_contribution"] = [item[1] for item in classified]
+    rows: list[dict[str, Any]] = []
+    for (group_kind, group), values in frame.groupby(["group_kind", "group"], sort=True):
+        directions = set(values["delta_direction"].astype(str))
+        if "invalid" in directions:
+            decision = "invalid_requires_recheck"
+            recommendation = "无法判定：噪声带或 ΔIC 无效，先重查运行产物"
+        elif "removal_harms" in directions and "removal_improves" in directions:
+            decision = "direction_conflict"
+            recommendation = "人工复核：主线方向冲突，不能自动列入移除候选"
+        elif "removal_harms" in directions:
+            decision = "retain_positive_marginal"
+            recommendation = "保留：至少一条主线显示移除会显著变差"
+        elif "removal_improves" in directions:
+            decision = "removal_candidate_improves"
+            recommendation = "可列入移除候选：至少一条主线显著改善，且没有主线显示正边际贡献"
+        else:
+            decision = "removal_candidate_indistinguishable"
+            recommendation = "可列入移除候选：两条主线均无可检测边际贡献"
+        rows.append({
+            "group_kind": group_kind,
+            "group": group,
+            "models": ",".join(values["model"].astype(str)),
+            "directions": ",".join(sorted(directions)),
+            "decision": decision,
+            "recommendation": recommendation,
+        })
+    return pd.DataFrame(rows)
 
 
 def _write_ablation_report(summary: pd.DataFrame, output_dir: Path) -> None:
@@ -464,7 +562,7 @@ def _write_ablation_report(summary: pd.DataFrame, output_dir: Path) -> None:
         "",
         "## 判定规则",
         "",
-        "完整集基线先于 LOFO 登记噪声带。只有某组在两条主模型上的 `abs(delta_ic) <= 对应模型 noise_std`，才可标记为“统计上可移除候选”；本报告不自动执行删除。",
+        "完整集基线先于 LOFO 登记噪声带。`delta_ic > noise_std` 表示移除后显著变好（该组边际贡献为负）；`delta_ic < -noise_std` 表示移除后显著变差（该组边际贡献为正）；带内表示无可检测边际贡献。只有没有任何主线显示 `removal_harms` 时，才可列入移除候选；方向冲突必须人工复核。本报告不自动执行删除。",
         "",
         "## 汇总",
         "",
@@ -473,13 +571,23 @@ def _write_ablation_report(summary: pd.DataFrame, output_dir: Path) -> None:
         lines.append("暂无 LOFO 结果。")
     else:
         view = summary.copy()
-        view["recommendation"] = "保留/继续人工审阅"
+        if "delta_direction" not in view.columns or "marginal_contribution" not in view.columns:
+            classified = view.apply(
+                lambda row: _classify_delta(row.get("delta_ic"), row.get("noise_std")), axis=1
+            )
+            view["delta_direction"] = [item[0] for item in classified]
+            view["marginal_contribution"] = [item[1] for item in classified]
+        if "within_noise_band" not in view.columns:
+            view["within_noise_band"] = view["delta_direction"].eq("indistinguishable")
+        decisions = _group_decisions(view)
         for (kind, group), rows in view.groupby(["group_kind", "group"], sort=True):
-            both_within = bool(rows["within_noise_band"].all())
-            recommendation = "可列入移除候选（需人工冻结）" if both_within else "保留：至少一条主线超出噪声带"
+            recommendation = decisions.loc[
+                (decisions["group_kind"] == kind) & (decisions["group"] == group),
+                "recommendation",
+            ].iloc[0]
             lines.append(f"### {kind} = `{group}`")
             lines.append("")
-            lines.append(rows[["model", "removed_count", "remaining_count", "full_ic", "reduced_ic", "delta_ic", "noise_std", "within_noise_band"]].to_markdown(index=False))
+            lines.append(rows[["model", "removed_count", "remaining_count", "full_ic", "reduced_ic", "delta_ic", "noise_std", "delta_direction", "marginal_contribution", "within_noise_band"]].to_markdown(index=False))
             lines.append("")
             lines.append(f"- 预注册解释：{recommendation}。")
             lines.append("")
