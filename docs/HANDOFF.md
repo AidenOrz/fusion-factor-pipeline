@@ -17,8 +17,10 @@
   - `runs/gbdt_walkforward_pruned60/`（60）
 - B2 冻结与 Evaluation：
   - `config/factor_pool_b2_frozen_2026-08-28.json`：37 因子、20 日标签、C 轨剔除底部 10%。
+  - `docs/C_TRACK_ACCEPTANCE_PREREG_2026-08-28.md`：已预注册使用 `huber_b2_neutral_rank` 单模型；raw rank 仅作对照附录。
   - `runs/factor_evaluation_v1_b2_frozen_2026-08-28/`：一次性内部历史留出结果，`evaluation_consumed=true`、`evaluation_pass=true`、`production_authorized=false`。
   - `docs/B2_EVALUATION_REPORT_2026-08-28.md`：结果、边界和下一步的可读报告。
+  - `docs/WORK_REPORT_2026-08-28_B2_FREEZE_EVALUATION.md`：冻结评审、因子往返、Evaluation 证据与 C 轨选择依据。
 - 观察锁箱：
   - `artifacts/dev_lockbox/dev/`：active，3 个非空 live 信号日已追加，`verify` 通过。
 
