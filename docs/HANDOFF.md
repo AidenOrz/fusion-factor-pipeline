@@ -1,7 +1,7 @@
 # HANDOFF — 当前稳定点与下一步
 
 > 更新时间：2026-08-28
-> 状态：37 因子池已通过 selection-only 确认并冻结，下一步为一次性 evaluation；无阻塞。
+> 状态：37 因子池已通过并消费一次性内部 Evaluation；下一步为冻结 C 轨经济验收，运行前尚需明确可执行的滑点与调仓/成交口径。
 
 ## 1. 最后稳定点
 
@@ -15,6 +15,10 @@
   - `runs/gbdt_walkforward_full/`（316）
   - `runs/gbdt_walkforward_reduced80/`（80）
   - `runs/gbdt_walkforward_pruned60/`（60）
+- B2 冻结与 Evaluation：
+  - `config/factor_pool_b2_frozen_2026-08-28.json`：37 因子、20 日标签、C 轨剔除底部 10%。
+  - `runs/factor_evaluation_v1_b2_frozen_2026-08-28/`：一次性内部历史留出结果，`evaluation_consumed=true`、`evaluation_pass=true`、`production_authorized=false`。
+  - `docs/B2_EVALUATION_REPORT_2026-08-28.md`：结果、边界和下一步的可读报告。
 - 观察锁箱：
   - `artifacts/dev_lockbox/dev/`：active，3 个非空 live 信号日已追加，`verify` 通过。
 
@@ -24,6 +28,7 @@
 - lightgbm 4.7.0 已安装，判官用 `LGBMRegressor`，支持 NaN 原生处理。
 - DeepSeek v4-flash/pro 是唯一模型；`deepseek-chat` 是旧别名。
 - LLM 每次运行有完整记录：`runs/llm_miner/<UTC>/`。
+- 2026-08-28 v6 健康检查：版本 `6.5.0.dev0`，M8 `preflight/started/executed` 均为 true；本轮 B2 Evaluation 的 `clean_2026_oos_access=false`。
 
 ## 3. 尚未完成 / 待决策
 
@@ -35,22 +40,21 @@
 - [x] 2026-08-28 已完成 v4 两条完整集基线、family LOFO 和 info-type LOFO；方向字段与组级决策已落盘。
 - [x] 35 因子首轮确认 raw IC 未过；按预注册规则唯一一次放回 `starter` 后，37 因子池双 Huber 确认通过。
 - [x] 冻结评审选择 C 主轨、底部 10% 剔除、20 日标签；`gtja_090` 明确维持出局。冻结配置为 `config/factor_pool_b2_frozen_2026-08-28.json`。
-- [ ] 下一步：
-  1. selection 期训练固定 37 因子双 Huber 模型；evaluation 期只预测一次，不用 evaluation 标签更新模型。
-  2. 按冻结标准检查 HAC IC_IR、三个连续块符号一致性和十分位结构。
-  3. evaluation 未全过则记录最终否定，不再修改本候选；全过才进入 C 轨扣费验收，A 轨 Top-K 仅附录。
+- [x] 一次性内部 Evaluation 已消费并通过：raw/neutral IC `0.134586/0.125299`，HAC IC_IR `0.255165/0.393278`，两线三个时间块均为正且十分位结构保持。Evaluation 结果不得用于修改因子、方向、horizon 或验收轨。
+- [ ] 下一步只做冻结 C 轨经济验收：
+  1. 在看收益前明确滑点、调仓频率、20 日重叠持仓和停牌/涨跌停成交语义；沿用双边千一成本约束。
+  2. B2 域剔除预测底部 10%，与上证指数比较扣费后的年化超额、日胜率、换手和 R 分布。
+  3. 同批生成 A 轨 Top-5/Top-10 附录，不以其结果改轨或改模型。
 
 ## 4. 恢复入口
 
 ```powershell
 cd C:\Users\Lenovo\Documents\New project\fusion-factor-pipeline
 python tests/run_p0_smoke.py
-python bridge/ablation.py register --out-dir runs/factor_ablation_v4_b2_huber_cross_label_2026-08-28
-python bridge/ablation.py run --phase baseline --out-dir runs/factor_ablation_v4_b2_huber_cross_label_2026-08-28
-python bridge/ablation.py run --phase lofo --group-kind family --out-dir runs/factor_ablation_v4_b2_huber_cross_label_2026-08-28
-python bridge/ablation.py run --phase lofo --group-kind info_type --out-dir runs/factor_ablation_v4_b2_huber_cross_label_2026-08-28
-python bridge/gbdt.py --panel data/panel_fusion_full.parquet --features-file runs/factor_selection/selected_features_shap.json --mode walk-forward --out-dir runs/gbdt_walkforward_pruned60
-python bridge/dev_lockbox.py status
+Get-Content -Raw runs/factor_evaluation_v1_b2_frozen_2026-08-28/evaluation_decision.json
+Get-Content -Raw docs/B2_EVALUATION_REPORT_2026-08-28.md
 ```
+
+不要再次执行 `python bridge/evaluation.py run`：`evaluation_decision.json` 已存在，本次一次性 Evaluation 已消费。
 
 无凭据保存在项目文件；DeepSeek key 在 `QuantGPT/.env`（gitignored）。

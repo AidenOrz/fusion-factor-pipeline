@@ -1,6 +1,6 @@
 # PROJECT — Fusion Factor Pipeline 项目长期依据
 
-> 更新时间：2026-08
+> 更新时间：2026-08-28
 > 依据：用户拍板与已执行的工程结果。
 
 ## 1. 项目目标与边界
@@ -10,8 +10,8 @@
 边界：
 
 - 不是实盘交易系统；不做券商下单。
-- 2023-06-01~2025-12-31 是已消费开发集；2026-01-01~07-17 永久消费；干净数据自 2026-07-18 起算。
-- 所有开发集结论为 `post_hoc_descriptive_only`，不得直接选候选或改生产配置。
+- `2023-06-01..2024-09-12` 的选择期已经消费；`2024-10-22..2025-12-31` 的 B2 一次性内部历史留出也已于 2026-08-28 消费。二者都不是干净 OOS，结果不得回传修改本轮因子池、方向、标签或验收轨。
+- v6 的 `2026-01-01..2026-07-17` M8 OOS 已永久消费；本项目可用于未来独立前向验证的干净数据自 2026-07-18 起算。
 
 ## 2. 已批准的关键决策
 
@@ -19,7 +19,7 @@
 2. **锁箱语义**：官方 v6 锁箱保持单次揭盲；本项目开发者观察锁箱允许无限次 `observe`，`formal-reveal` 每 epoch 一次。锁箱通过只表示“进入前向观察”，不等于 alpha 验证。
 3. **数据口径**：v6 CSV 为前复权；桥接层统一 baostock 前复权数据；volume 统一为股；vwap=amount/volume；市值=close×总股本（baostock `totalShare`，按 `pubDate` as-of）。
 4. **因子生产**：模型只生成表达式文本，收益由本项目判官评估。DeepSeek 当前可用模型为 `deepseek-v4-flash` 与 `deepseek-v4-pro`；支持 openai/anthropic provider。
-5. **主判官**：lightgbm `LGBMRegressor` + purged walk-forward（gap≥10 交易日）；筛选/消融期主看按日截面 IC、NDCG、HAC IC_IR 和折间一致性，因子冻结后的验收期再以单笔净R/Top-K 前瞻收益跑赢上证指数为硬验收。
+5. **主判官**：lightgbm `LGBMRegressor` + purged walk-forward（20 日标签对应 gap≥20 个交易日）；筛选/消融期主看按日截面 IC、NDCG、HAC IC_IR 和折间一致性。当前冻结候选的经济验收主轨为 C 轨（剔除预测底部 10%），A 轨 Top-K 只作附录。
 6. **RL 不进主判官**；aurumq-rl 的 PPO/A2C/SAC 保留为外部研究。
 
 ## 3. 因子池现状（2026-08）
@@ -29,8 +29,9 @@
 - 相关性去重（|ρ|>0.95 聚类）保留 80；SHAP 剪枝后保留 60。
 - 开发集上完整池、80 池、60 池均未跑赢上证指数。该事实只用于设计下一轮预注册候选，不得反向选因子。
 - 精简池（v6 四因子 + 18 表达式 + 股本/市值）曾在开发集 Top1 超额 +0.0111；同样是 post-hoc。
-- 2026-08-27 B2 人工裁决候选池登记在 `config/factor_pool_b2_adjudicated_2026-08-27.json`：105 个 B2 代表加 9 个显式批准方向列，共 114 个预注册消融候选；`alpha052`、`gtja_183` 仅观察。该池尚未通过消融或 evaluation 验收，不是生产配置。
-- 2026-08-28 v4 LOFO 后的 35 因子池首轮 raw IC 未过 1σ 下限；按预注册失败策略仅放回 `starter` 两列形成 37 因子池，双 Huber 确认通过。该池冻结在 `config/factor_pool_b2_frozen_2026-08-28.json`，C 轨、20 日标签，只授权一次性 evaluation，仍不是生产配置。
+- 2026-08-27 B2 人工裁决候选池登记在 `config/factor_pool_b2_adjudicated_2026-08-27.json`：105 个 B2 代表加 9 个显式批准方向列，共 114 个预注册消融候选；`alpha052`、`gtja_183` 仅观察。该池是 37 因子冻结池的历史来源，不是生产配置。
+- 2026-08-28 v4 LOFO 后的 35 因子池首轮 raw IC 未过 1σ 下限；按预注册失败策略仅放回 `starter` 两列形成 37 因子池，双 Huber 确认通过。该池冻结在 `config/factor_pool_b2_frozen_2026-08-28.json`，C 轨、20 日标签。
+- 37 因子池的一次性内部 Evaluation 已消费并通过：raw/neutral 日均 IC 为 `0.134586/0.125299`，HAC IC_IR 为 `0.255165/0.393278`，两线三个连续块均同号且十分位结构保持。该结果只授权进入冻结 C 轨经济验收，`production_authorized=false`；详见 `docs/B2_EVALUATION_REPORT_2026-08-28.md`。
 
 ## 4. 长期约束
 
