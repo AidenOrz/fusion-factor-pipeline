@@ -673,7 +673,13 @@ def compute_acceptance_metrics(
     if opportunity_curves:
         strategy_daily = strategy_by_cost[1.0]["daily"]
         for name, curve in opportunity_curves.items():
-            opportunity[name] = _curve_metrics(strategy_daily, curve)
+            # Keep tabular relative curves out of the JSON metrics payload;
+            # they are written as CSV artifacts by ``run_acceptance`` below.
+            opportunity[name] = {
+                key: value
+                for key, value in _curve_metrics(strategy_daily, curve).items()
+                if key != "relative_curve"
+            }
     mix = opportunity.get("csi_mix_50_50", {})
     opportunity_pass = bool(mix.get("annualized_excess") is not None and mix["annualized_excess"] > 0)
     return {
@@ -900,6 +906,10 @@ def run_acceptance(
     ).to_csv(output / "opportunity_cost.csv", index=False, encoding="utf-8-sig")
     for name, curve in opportunity_curves.items():
         curve.to_csv(output / f"benchmark_{name}.csv", index=False, encoding="utf-8-sig")
+        relative = _curve_metrics(neutral_sim[1.0]["daily"], curve)["relative_curve"]
+        relative.to_csv(output / f"relative_curve_{name}.csv", index=False, encoding="utf-8-sig")
+    relative_b2 = _curve_metrics(neutral_sim[1.0]["daily"], baseline_sim[1.0]["daily"])["relative_curve"]
+    relative_b2.to_csv(output / "relative_curve_b2_equal_weight.csv", index=False, encoding="utf-8-sig")
     topk_summary = {
         label: {
             top_k: {key: value for key, value in row.items() if key != "trades"}
