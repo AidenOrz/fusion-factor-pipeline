@@ -42,6 +42,7 @@ DEFAULT_CANDIDATE_FEATURES = PROJECT_ROOT / "config" / "factor_pool_b2_post_lofo
 DEFAULT_NOISE = PROJECT_ROOT / "runs" / "factor_ablation_v4_b2_huber_cross_label_2026-08-28" / "noise_band.json"
 DEFAULT_OUT = PROJECT_ROOT / "runs" / "factor_confirmation_v1_b2_post_lofo_2026-08-28"
 HORIZONS = (1, 5, 10, 20, 40)
+HORIZON_INTERVALS = ((1, 1), (2, 5), (6, 10), (11, 20), (21, 40))
 
 
 def _path(value: str | Path) -> Path:
@@ -266,6 +267,122 @@ def decile_analysis(predictions: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, 
     return table, summary
 
 
+def bottom_decile_tradeability(
+    predictions: pd.DataFrame,
+    market_status: pd.DataFrame,
+    *,
+    horizon: int = 20,
+    diagnostic_end: pd.Timestamp = SELECTION_END,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Describe whether Q1 returns survive observable tradeability screens.
+
+    This is a C-track diagnostic only. It does not alter factors, labels, or
+    the confirmation decision. Missing holding-window bars are a conservative
+    suspension/delist-risk proxy because complete historical delist metadata
+    is not available in the project reference table.
+    """
+
+    required_predictions = {"date", "code", "prediction", "y_excess20", "adv20"}
+    required_status = {"date", "code", "is_st"}
+    missing_predictions = sorted(required_predictions - set(predictions.columns))
+    missing_status = sorted(required_status - set(market_status.columns))
+    if missing_predictions or missing_status:
+        raise ValueError(
+            f"tradeability diagnostic missing columns: predictions={missing_predictions}, "
+            f"market_status={missing_status}"
+        )
+    frame = predictions.dropna(subset=["prediction", "y_excess20"]).copy()
+    frame["date"] = pd.to_datetime(frame["date"], errors="raise")
+    frame["code"] = frame["code"].astype(str).str.zfill(6)
+    frame["decile"] = frame.groupby("date", sort=False)["prediction"].transform(
+        lambda values: np.minimum(np.ceil(values.rank(method="first", pct=True) * 10).astype(int), 10)
+    )
+    frame["signal_adv_percentile"] = frame.groupby("date", sort=False)["adv20"].rank(
+        method="average", pct=True
+    )
+    q1 = frame.loc[frame["decile"].eq(1)].copy().reset_index(drop=True)
+
+    status = market_status[["date", "code", "is_st"]].copy()
+    status["date"] = pd.to_datetime(status["date"], errors="raise")
+    status["code"] = status["code"].astype(str).str.zfill(6)
+    status = status.drop_duplicates(["date", "code"], keep="last")
+    calendar = pd.DatetimeIndex(status["date"].dropna().unique()).sort_values()
+    positions = pd.Series(np.arange(len(calendar)), index=calendar)
+    q1["_position"] = q1["date"].map(positions)
+    exit_positions = q1["_position"] + horizon
+    valid_exit = exit_positions.lt(len(calendar))
+    q1["exit_date"] = pd.NaT
+    q1.loc[valid_exit, "exit_date"] = calendar.take(
+        exit_positions.loc[valid_exit].astype(int).to_numpy()
+    ).to_numpy()
+    q1 = q1.loc[q1["exit_date"].le(diagnostic_end)].copy().reset_index(drop=True)
+    q1["signal_adv_bottom_10pct"] = q1["signal_adv_percentile"].le(0.10)
+    q1["_row_id"] = np.arange(len(q1))
+
+    expanded = q1.loc[q1.index.repeat(horizon), ["_row_id", "code", "_position"]].copy()
+    expanded["_offset"] = np.tile(np.arange(1, horizon + 1), len(q1))
+    expanded["holding_date"] = calendar.take(
+        (expanded["_position"] + expanded["_offset"]).astype(int).to_numpy()
+    ).to_numpy()
+    holding_status = status.rename(columns={"date": "holding_date", "is_st": "holding_is_st"})
+    holding_status["_bar_present"] = True
+    expanded = expanded.merge(
+        holding_status,
+        on=["code", "holding_date"],
+        how="left",
+        validate="many_to_one",
+    )
+    flags = expanded.groupby("_row_id", sort=False).agg(
+        future_st=("holding_is_st", lambda values: bool(values.fillna(False).any())),
+        missing_holding_bar=("_bar_present", lambda values: bool(values.isna().any())),
+    )
+    q1 = q1.merge(flags, left_on="_row_id", right_index=True, how="left", validate="one_to_one")
+    q1["passes_observable_screens"] = ~(
+        q1["future_st"] | q1["missing_holding_bar"] | q1["signal_adv_bottom_10pct"]
+    )
+
+    def return_summary(mask: pd.Series) -> dict[str, Any]:
+        selected = q1.loc[mask]
+        daily = selected.groupby("date", sort=True)["y_excess20"].mean()
+        return {
+            "rows": int(len(selected)),
+            "days": int(daily.index.nunique()),
+            "mean_daily_y_excess20": float(daily.mean()) if len(daily) else None,
+            "hac_t_y_excess20": _hac_t(daily) if len(daily) else None,
+        }
+
+    all_mask = pd.Series(True, index=q1.index)
+    all_summary = return_summary(all_mask)
+    retained_summary = return_summary(q1["passes_observable_screens"])
+    original = all_summary["mean_daily_y_excess20"]
+    retained = retained_summary["mean_daily_y_excess20"]
+    summary = {
+        "classification": "post_hoc_descriptive_only",
+        "purpose": "C-track bottom-decile tradeability life check",
+        "horizon": horizon,
+        "last_exit_date": str(q1["exit_date"].max().date()) if not q1.empty else None,
+        "all_q1": all_summary,
+        "exclude_future_st": return_summary(~q1["future_st"]),
+        "exclude_missing_holding_bar": return_summary(~q1["missing_holding_bar"]),
+        "exclude_signal_adv_bottom_10pct": return_summary(~q1["signal_adv_bottom_10pct"]),
+        "combined_observable_screens": retained_summary,
+        "absolute_return_retention_ratio": (
+            float(abs(retained) / abs(original)) if original not in (None, 0.0) and retained is not None else None
+        ),
+        "limitations": [
+            "missing_holding_bar is a conservative suspension/delist-risk proxy",
+            "complete historical delist metadata is unavailable; no claim of a full delist audit",
+        ],
+        "factor_list_mutation_forbidden": True,
+    }
+    output_columns = [
+        "date", "code", "exit_date", "prediction", "y_excess20", "adv20",
+        "signal_adv_percentile", "signal_adv_bottom_10pct", "future_st",
+        "missing_holding_bar", "passes_observable_screens",
+    ]
+    return q1[output_columns].sort_values(["date", "code"]), summary
+
+
 def _forward_excess_for_horizon(prices: pd.DataFrame, horizon: int) -> pd.DataFrame:
     if horizon < 1:
         raise ValueError("horizon must be positive")
@@ -293,6 +410,52 @@ def _forward_excess_for_horizon(prices: pd.DataFrame, horizon: int) -> pd.DataFr
     frame = frame.merge(benchmark[["date", "benchmark_return"]], on="date", how="left", validate="many_to_one")
     frame["forward_excess"] = frame["exit_close"] / frame["entry_open"] - 1.0 - frame["benchmark_return"]
     valid = frame["entry_open"].notna() & frame["exit_close"].notna() & frame["benchmark_return"].notna()
+    frame["forward_excess"] = frame["forward_excess"].where(valid)
+    return frame[["date", "code", "exit_date", "forward_excess"]]
+
+
+def _forward_excess_for_interval(
+    prices: pd.DataFrame, start_offset: int, end_offset: int
+) -> pd.DataFrame:
+    """Return excess performance for one non-overlapping forward interval."""
+
+    if start_offset < 1 or end_offset < start_offset:
+        raise ValueError("forward interval must satisfy 1 <= start_offset <= end_offset")
+    required = {"date", "code", "open", "close", "benchmark_open", "benchmark_close"}
+    missing = sorted(required - set(prices.columns))
+    if missing:
+        raise ValueError(f"price panel missing columns: {missing}")
+    frame = prices[list(required)].copy()
+    frame["date"] = pd.to_datetime(frame["date"], errors="raise")
+    frame["code"] = frame["code"].astype(str).str.zfill(6)
+    frame = frame.sort_values(["code", "date"], kind="mergesort")
+    benchmark = frame[["date", "benchmark_open", "benchmark_close"]].drop_duplicates("date").sort_values("date")
+    dates = pd.DatetimeIndex(benchmark["date"])
+    positions = pd.Series(np.arange(len(dates)), index=dates)
+    frame["_position"] = frame["date"].map(positions)
+    date_by_position = pd.Series(dates, index=np.arange(len(dates)))
+    frame["entry_date"] = (frame["_position"] + start_offset).map(date_by_position)
+    frame["exit_date"] = (frame["_position"] + end_offset).map(date_by_position)
+    opens = frame[["code", "date", "open"]].rename(columns={"date": "entry_date", "open": "entry_open"})
+    closes = frame[["code", "date", "close"]].rename(columns={"date": "exit_date", "close": "exit_close"})
+    frame = frame.merge(opens, on=["code", "entry_date"], how="left", validate="many_to_one")
+    frame = frame.merge(closes, on=["code", "exit_date"], how="left", validate="many_to_one")
+    benchmark = benchmark.copy()
+    benchmark["benchmark_interval_return"] = (
+        benchmark["benchmark_close"].shift(-end_offset)
+        / benchmark["benchmark_open"].shift(-start_offset)
+        - 1.0
+    )
+    frame = frame.merge(
+        benchmark[["date", "benchmark_interval_return"]],
+        on="date",
+        how="left",
+        validate="many_to_one",
+    )
+    frame["forward_excess"] = (
+        frame["exit_close"] / frame["entry_open"] - 1.0 - frame["benchmark_interval_return"]
+    )
+    valid = frame["entry_open"].notna() & frame["exit_close"].notna() & frame["benchmark_interval_return"].notna()
     frame["forward_excess"] = frame["forward_excess"].where(valid)
     return frame[["date", "code", "exit_date", "forward_excess"]]
 
@@ -327,6 +490,40 @@ def horizon_ic_analysis(
     return pd.DataFrame(rows)
 
 
+def horizon_interval_ic_analysis(
+    predictions: pd.DataFrame, prices: pd.DataFrame, selection_end: pd.Timestamp = SELECTION_END
+) -> pd.DataFrame:
+    """Measure IC in disjoint forward windows to separate persistence from accumulation."""
+
+    prediction_frame = predictions[["date", "code", "prediction"]].copy()
+    prediction_frame["date"] = pd.to_datetime(prediction_frame["date"], errors="raise")
+    prediction_frame["code"] = prediction_frame["code"].astype(str).str.zfill(6)
+    rows: list[dict[str, Any]] = []
+    for start_offset, end_offset in HORIZON_INTERVALS:
+        labels = _forward_excess_for_interval(prices, start_offset, end_offset)
+        joined = prediction_frame.merge(labels, on=["date", "code"], how="left", validate="one_to_one")
+        joined = joined.loc[joined["exit_date"].le(selection_end)].dropna(subset=["prediction", "forward_excess"])
+        daily_ic = joined.groupby("date", sort=True).apply(
+            lambda day: day["prediction"].corr(day["forward_excess"], method="spearman")
+            if len(day) >= 5 else np.nan,
+            include_groups=False,
+        ).dropna()
+        lag = end_offset - start_offset + 1
+        hac_ir = ic_ir_hac(daily_ic.to_numpy(dtype=float), lag=lag)
+        rows.append({
+            "interval": f"{start_offset}-{end_offset}",
+            "start_offset": start_offset,
+            "end_offset": end_offset,
+            "ic_days": int(len(daily_ic)),
+            "last_exit_date": str(joined["exit_date"].max().date()) if not joined.empty else None,
+            "mean_daily_spearman_ic": float(daily_ic.mean()) if len(daily_ic) else None,
+            "hac_ic_ir": float(hac_ir) if hac_ir is not None else None,
+            "hac_t": float(hac_ir * np.sqrt(len(daily_ic))) if hac_ir is not None else None,
+            "post_hoc_descriptive_only": True,
+        })
+    return pd.DataFrame(rows)
+
+
 def _same_structure(full: dict[str, Any], candidate: dict[str, Any]) -> bool:
     return full["structure_signature"] == candidate["structure_signature"]
 
@@ -342,6 +539,11 @@ def analyze_and_decide(
     prices = pd.read_parquet(
         _path(panel_path),
         columns=["date", "code", "open", "close", "benchmark_open", "benchmark_close"],
+        filters=[("date", "<=", SELECTION_END)],
+    )
+    market_status = pd.read_parquet(
+        _path(panel_path),
+        columns=["date", "code", "is_st"],
     )
     metrics: dict[str, dict[str, Any]] = {}
     deciles: dict[str, dict[str, Any]] = {}
@@ -358,6 +560,11 @@ def analyze_and_decide(
             _write_json(run_dir / "decile_summary.json", summary)
             horizon_table = horizon_ic_analysis(predictions, prices)
             horizon_table.to_csv(run_dir / "horizon_ic.csv", index=False, encoding="utf-8-sig")
+            interval_table = horizon_interval_ic_analysis(predictions, prices)
+            interval_table.to_csv(run_dir / "horizon_interval_ic.csv", index=False, encoding="utf-8-sig")
+            q1_rows, q1_summary = bottom_decile_tradeability(predictions, market_status)
+            q1_rows.to_csv(run_dir / "q1_tradeability.csv", index=False, encoding="utf-8-sig")
+            _write_json(run_dir / "q1_tradeability_summary.json", q1_summary)
             deciles[pool][model_id] = summary
     checks: list[dict[str, Any]] = []
     for model in manifest["primary_models"]:

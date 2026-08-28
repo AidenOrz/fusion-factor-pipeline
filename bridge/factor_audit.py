@@ -30,6 +30,14 @@ MANUAL_EXEMPTIONS = {
     "manual__alpha_qg_f008__short": "人工批准的 f008 short：momentum 整组删除不得覆盖已裁决方向",
 }
 
+EXPLICIT_NON_EXEMPTIONS = {
+    "manual__gtja_090__long": (
+        "维持出局且不新增豁免：该因子 B2 单因子 IC=0.0351、符号一致性=1.00、"
+        "recent IC=0.0291，但只有单因子证据；所属 gtja191 family 在两条 Huber "
+        "主线上移除后均显著改善。按‘单因子强度不等于模型边际贡献’原则，组级反证优先"
+    ),
+}
+
 REMOVAL_DECISIONS = {
     "removal_candidate_improves",
     "removal_candidate_indistinguishable",
@@ -114,6 +122,9 @@ def build_cross_overlap_audit(
         if exemption:
             final_action = "retain"
             reason = exemption
+        elif factor in EXPLICIT_NON_EXEMPTIONS:
+            final_action = "remove"
+            reason = EXPLICIT_NON_EXEMPTIONS[factor]
         elif family_action == "remove_candidate" and info_action == "remove_candidate":
             final_action = "remove"
             reason = f"family={family} 与 info_type_group={info_group} 均为预注册移除候选，按并集删除"
@@ -190,6 +201,7 @@ def materialize_candidate_pool(
         "removed_family_candidates": sorted(audit.loc[(audit["family_action"] == "remove_candidate"), "family"].unique().tolist()),
         "removed_info_type_candidates": sorted(audit.loc[(audit["info_action"] == "remove_candidate"), "info_type_group"].unique().tolist()),
         "manual_exemptions": sorted(MANUAL_EXEMPTIONS),
+        "explicit_non_exemptions": sorted(EXPLICIT_NON_EXEMPTIONS),
         "rule_priority": ["manual_exemption", "family_or_info_type_removal_union", "retain"],
         "confirmation_status": "pending_selection_only_confirmation",
         "automatic_direction_flip": False,

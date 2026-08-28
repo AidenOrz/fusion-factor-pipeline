@@ -1,5 +1,7 @@
 # 2026-08-28 工作报告：B2 预注册整组消融
 
+> **状态说明（2026-08-28）：本文 v3 结论已被 v4 同模型跨标签复验取代。当前结论以 [`WORK_REPORT_2026-08-28_ABLATION_V4.md`](WORK_REPORT_2026-08-28_ABLATION_V4.md) 及后续剪后确认报告为准；本文仅保留为历史实验记录。**
+
 项目：`fusion-factor-pipeline`
 性质：selection period 开发集描述性实验，全部标记为 `post_hoc_descriptive_only`，不构成生产批准或实盘授权。
 

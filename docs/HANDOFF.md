@@ -1,7 +1,7 @@
 # HANDOFF — 当前稳定点与下一步
 
 > 更新时间：2026-08-28
-> 状态：v4 同模型跨标签 LOFO 已完成，等待剪后候选池确认；无阻塞。
+> 状态：37 因子池已通过 selection-only 确认并冻结，下一步为一次性 evaluation；无阻塞。
 
 ## 1. 最后稳定点
 
@@ -33,11 +33,12 @@
 - [x] 2026-08-28 已审阅旧 LOFO 的方向盲区与 LambdaRank 噪声问题；旧结果仍保留为历史证据。
 - [x] 2026-08-28 已准备并登记新实验：`runs/factor_ablation_v4_b2_huber_cross_label_2026-08-28/`，两条主线均为 Huber，仅标签不同。
 - [x] 2026-08-28 已完成 v4 两条完整集基线、family LOFO 和 info-type LOFO；方向字段与组级决策已落盘。
+- [x] 35 因子首轮确认 raw IC 未过；按预注册规则唯一一次放回 `starter` 后，37 因子池双 Huber 确认通过。
+- [x] 冻结评审选择 C 主轨、底部 10% 剔除、20 日标签；`gtja_090` 明确维持出局。冻结配置为 `config/factor_pool_b2_frozen_2026-08-28.json`。
 - [ ] 下一步：
-  1. 人工审阅 `lofo_group_decisions.csv`，先做 family/info-type 交叉重叠审计，不自动删除或翻转方向。
-  2. 按预注册的组内规则形成剪后候选池，明确记录每个被移除因子及其所属组。
-  3. 剪后候选池 vs 当前全集各跑一次冻结确认；只有通过后才进入 evaluation 一次性验证。
-  4. 排序质量稳定前不做 Top-K、十分位或 horizon 结果驱动的再筛选。
+  1. selection 期训练固定 37 因子双 Huber 模型；evaluation 期只预测一次，不用 evaluation 标签更新模型。
+  2. 按冻结标准检查 HAC IC_IR、三个连续块符号一致性和十分位结构。
+  3. evaluation 未全过则记录最终否定，不再修改本候选；全过才进入 C 轨扣费验收，A 轨 Top-K 仅附录。
 
 ## 4. 恢复入口
 

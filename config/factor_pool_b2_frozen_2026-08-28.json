@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "status": "frozen_for_one_shot_evaluation",
+  "freeze_date": "2026-08-28",
+  "panel_scope": "full_market",
+  "universe": "b2",
+  "features_file": "config/factor_pool_b2_post_lofo_retry_starter_2026-08-28_features.json",
+  "feature_count": 37,
+  "source_full_pool": "config/factor_pool_b2_adjudicated_2026-08-27_features.json",
+  "source_confirmation": "runs/factor_confirmation_v2_b2_starter_putback_2026-08-28/confirmation_decision.json",
+  "confirmation_passed": true,
+  "confirmation_retry_used": true,
+  "confirmation_retry_family": "starter",
+  "confirmation_retry_limit_exhausted": true,
+  "models": [
+    {
+      "id": "huber_b2_raw_rank",
+      "estimator": "lightgbm.LGBMRegressor",
+      "objective": "huber",
+      "target": "y_raw_rank20_b2"
+    },
+    {
+      "id": "huber_b2_neutral_rank",
+      "estimator": "lightgbm.LGBMRegressor",
+      "objective": "huber",
+      "target": "y_neutral_rank20_b2"
+    }
+  ],
+  "ensemble_seeds": [42, 43, 44],
+  "label_horizon_trading_days": 20,
+  "selection_period": "2023-06-30..2024-09-12",
+  "evaluation_period": "2024-10-22..2025-12-31",
+  "evaluation_mode": "train_selection_once_predict_evaluation_once",
+  "evaluation_pass_rule": {
+    "hac_ic_ir_minimum_each_model": 0.15,
+    "evaluation_block_ic_sign_consistency_each_model": 1.0,
+    "decile_structure_signature_each_model": {
+      "q1_sign": -1,
+      "q10_sign": 1,
+      "q10_minus_q1_sign": 1,
+      "monotonic_spearman_sign": 1
+    },
+    "all_models_and_conditions_required": true,
+    "failure_is_final_for_this_frozen_candidate": true
+  },
+  "acceptance_track": {
+    "primary": "C_bottom_exclusion",
+    "bottom_exclusion_fraction": 0.10,
+    "B_wide_head": "not_selected_q10_not_significant_in_selection",
+    "A_top_k": "appendix_only"
+  },
+  "horizon_review": {
+    "primary_horizon": 20,
+    "40_day_status": "sensitivity_only_not_a_relabel_decision",
+    "reason": "Scores were trained on 20-day labels; cumulative and disjoint-window persistence through days 21-40 does not by itself validate changing the target without rerunning factor selection."
+  },
+  "manual_direction_source": "config/factor_pool_b2_adjudicated_2026-08-27.json",
+  "manual_direction_columns_in_pool": [
+    "manual__alpha004__long",
+    "manual__alpha055__long",
+    "manual__alpha059__long",
+    "manual__alpha_qg_corr_pv_10__short",
+    "manual__alpha_qg_f001__short",
+    "manual__alpha_qg_f005__short",
+    "manual__alpha_qg_f006__short",
+    "manual__alpha_qg_f008__short"
+  ],
+  "explicit_removed_no_exemption": ["manual__gtja_090__long"],
+  "automatic_direction_flip": false,
+  "factor_list_mutation_after_evaluation_forbidden": true,
+  "evaluation_authorized": true,
+  "production_authorized": false
+}

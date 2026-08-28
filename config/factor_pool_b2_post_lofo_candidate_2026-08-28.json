@@ -5,6 +5,9 @@
   "confirmation_status": "pending_selection_only_confirmation",
   "cross_overlap_audit_file": "docs/B2_CROSS_OVERLAP_AUDIT_2026-08-28.csv",
   "decision_date": "2026-08-28",
+  "explicit_non_exemptions": [
+    "manual__gtja_090__long"
+  ],
   "failure_policy": "one registered put-back of the culprit family, then return to descriptive stage",
   "feature_count": 35,
   "label_gap_trading_days": 20,

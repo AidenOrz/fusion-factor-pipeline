@@ -13,6 +13,7 @@ def _fixtures(tmp_path):
         "manual__alpha_qg_f008__short",
         "alpha_qg_f009",
         "manual__alpha_qg_corr_pv_10__short",
+        "manual__gtja_090__long",
         "keep_factor",
     ]
     features_path = tmp_path / "features.json"
@@ -21,18 +22,18 @@ def _fixtures(tmp_path):
         {
             "factor": features,
             "source_factor": features,
-            "family": ["llm", "llm", "llm", "starter", "alpha101"],
-            "info_type": ["momentum", "momentum", "momentum_volatility", "correlation", "reversal"],
-            "info_type_group": ["momentum", "momentum", "momentum", "correlation", "reversal"],
+            "family": ["llm", "llm", "llm", "starter", "gtja191", "alpha101"],
+            "info_type": ["momentum", "momentum", "momentum_volatility", "correlation", "volume_vwap", "reversal"],
+            "info_type_group": ["momentum", "momentum", "momentum", "correlation", "volume_vwap", "reversal"],
         }
     )
     grouping_path = tmp_path / "grouping.csv"
     grouping.to_csv(grouping_path, index=False)
     decisions = pd.DataFrame(
         {
-            "group_kind": ["family", "family", "family", "info_type_group", "info_type_group", "info_type_group"],
-            "group": ["alpha101", "llm", "starter", "correlation", "momentum", "reversal"],
-            "decision": ["retain_positive_marginal", "retain_positive_marginal", "removal_candidate_indistinguishable", "retain_positive_marginal", "removal_candidate_improves", "retain_positive_marginal"],
+            "group_kind": ["family", "family", "family", "family", "info_type_group", "info_type_group", "info_type_group", "info_type_group"],
+            "group": ["alpha101", "gtja191", "llm", "starter", "correlation", "momentum", "reversal", "volume_vwap"],
+            "decision": ["retain_positive_marginal", "removal_candidate_improves", "retain_positive_marginal", "removal_candidate_indistinguishable", "retain_positive_marginal", "removal_candidate_improves", "retain_positive_marginal", "retain_positive_marginal"],
         }
     )
     decisions_path = tmp_path / "decisions.csv"
@@ -48,6 +49,8 @@ def test_cross_overlap_audit_prioritizes_manual_short_exemptions(tmp_path):
     assert rows.loc["manual__alpha_qg_f008__short", "final_action"] == "retain"
     assert rows.loc["alpha_qg_f009", "final_action"] == "remove"
     assert rows.loc["manual__alpha_qg_corr_pv_10__short", "final_action"] == "remove"
+    assert rows.loc["manual__gtja_090__long", "final_action"] == "remove"
+    assert "单因子强度不等于模型边际贡献" in rows.loc["manual__gtja_090__long", "reason"]
     assert rows.loc["keep_factor", "final_action"] == "retain"
 
 
@@ -63,7 +66,7 @@ def test_materialize_candidate_pool_preserves_source_order_and_is_versioned(tmp_
         candidate_config_path=tmp_path / "candidate_config.json",
     )
     candidate = json.loads((tmp_path / "candidate.json").read_text(encoding="utf-8"))
-    assert candidate == [features[0], features[1], features[4]]
+    assert candidate == [features[0], features[1], features[5]]
     assert result["feature_count"] == 3
     config = json.loads((tmp_path / "candidate_config.json").read_text(encoding="utf-8"))
     assert config["status"] == "post_lofo_candidate_pool_not_frozen"

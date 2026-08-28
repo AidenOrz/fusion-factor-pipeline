@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "status": "confirmation_passed_promoted_to_frozen_config",
+  "decision_date": "2026-08-28",
+  "source_candidate_config": "config/factor_pool_b2_post_lofo_candidate_2026-08-28.json",
+  "source_candidate_features_file": "config/factor_pool_b2_post_lofo_candidate_2026-08-28_features.json",
+  "retry_features_file": "config/factor_pool_b2_post_lofo_retry_starter_2026-08-28_features.json",
+  "feature_count": 37,
+  "put_back_family": "starter",
+  "put_back_features": [
+    "alpha_qg_range_15",
+    "manual__alpha_qg_corr_pv_10__short"
+  ],
+  "selection_basis": "Before the 35-factor confirmation, v4 LOFO showed starter was the only removed family with a slight raw-line harm signal; gtja191 removal improved both Huber lines.",
+  "retry_limit": 1,
+  "retry_ordinal": 1,
+  "gtja_090_status": "removed_no_exemption",
+  "panel_scope": "full_market",
+  "universe": "b2",
+  "selection_period": "2023-06-30..2024-09-12",
+  "label_gap_trading_days": 20,
+  "automatic_direction_flip": false,
+  "evaluation_period_access": false,
+  "production_config_mutation": false
+}

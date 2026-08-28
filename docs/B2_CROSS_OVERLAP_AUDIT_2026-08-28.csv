@@ -107,7 +107,7 @@ alpha033,alpha033,alpha101,reversal,reversal,retain_positive_marginal,retain_pos
 manual__alpha004__long,alpha004,alpha101,reversal,reversal,retain_positive_marginal,retain_positive_marginal,retain,retain,,retain,family 与 info_type_group 均无移除候选证据
 manual__alpha055__long,alpha055,alpha101,volume_vwap,volume_vwap,retain_positive_marginal,retain_positive_marginal,retain,retain,,retain,family 与 info_type_group 均无移除候选证据
 manual__alpha059__long,alpha059,alpha101,correlation,correlation,retain_positive_marginal,retain_positive_marginal,retain,retain,,retain,family 与 info_type_group 均无移除候选证据
-manual__gtja_090__long,gtja_090,gtja191,volume_vwap,volume_vwap,removal_candidate_improves,retain_positive_marginal,remove_candidate,retain,,remove,family=gtja191 为预注册移除候选；info_type_group=volume_vwap 保留不覆盖 family 结论
+manual__gtja_090__long,gtja_090,gtja191,volume_vwap,volume_vwap,removal_candidate_improves,retain_positive_marginal,remove_candidate,retain,,remove,维持出局且不新增豁免：该因子 B2 单因子 IC=0.0351、符号一致性=1.00、recent IC=0.0291，但只有单因子证据；所属 gtja191 family 在两条 Huber 主线上移除后均显著改善。按‘单因子强度不等于模型边际贡献’原则，组级反证优先
 manual__alpha_qg_corr_pv_10__short,alpha_qg_corr_pv_10,starter,correlation,correlation,removal_candidate_indistinguishable,retain_positive_marginal,remove_candidate,retain,,remove,family=starter 为预注册移除候选；info_type_group=correlation 保留不覆盖 family 结论
 manual__alpha_qg_f001__short,alpha_qg_f001,llm,momentum,momentum,retain_positive_marginal,removal_candidate_improves,retain,remove_candidate,人工批准的 f001 short：momentum 整组删除不得覆盖已裁决方向,retain,人工批准的 f001 short：momentum 整组删除不得覆盖已裁决方向
 manual__alpha_qg_f005__short,alpha_qg_f005,llm,volume_vwap,volume_vwap,retain_positive_marginal,retain_positive_marginal,retain,retain,,retain,family 与 info_type_group 均无移除候选证据
