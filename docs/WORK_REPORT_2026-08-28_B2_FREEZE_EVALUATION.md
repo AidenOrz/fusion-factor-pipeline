@@ -101,4 +101,3 @@ Evaluation 三块 IC：
 - Evaluation 可读报告：`docs/B2_EVALUATION_REPORT_2026-08-28.md`；
 - 机器结果：`runs/factor_evaluation_v1_b2_frozen_2026-08-28/`；
 - v4 消融报告：`docs/WORK_REPORT_2026-08-28_ABLATION_V4.md`。
-
