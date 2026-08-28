@@ -258,14 +258,18 @@ def resolve_trade_window(
         positions = {date: index for index, date in enumerate(market_dates)}
     if evaluation_end is None:
         evaluation_end = market_dates.max()
-    by_code = {code: group for code, group in panel.groupby("code", sort=False)}
-    rows: list[dict[str, Any]] = []
-    for row in _normalise_keys(selected).itertuples(index=False):
-        signal_date = pd.Timestamp(row.date)
-        signal_position = positions.get(signal_date)
-        base = {
-            "signal_date": signal_date,
-            "code": row.code,
+    evaluation_end = pd.Timestamp(evaluation_end)
+    selected_frame = _normalise_keys(selected).reset_index(drop=True)
+    price_frame = _normalise_keys(panel)[["code", "date", "open", "close"]].copy()
+    price_frame["_market_pos"] = price_frame["date"].map(positions)
+    price_frame = price_frame.loc[
+        price_frame["_market_pos"].notna() & price_frame["date"].le(evaluation_end)
+    ].copy()
+
+    result = pd.DataFrame(
+        {
+            "signal_date": selected_frame["date"],
+            "code": selected_frame["code"],
             "planned_entry_date": pd.NaT,
             "planned_exit_date": pd.NaT,
             "entry_date": pd.NaT,
@@ -275,52 +279,99 @@ def resolve_trade_window(
             "entry_status": "unresolved",
             "exit_status": "unresolved",
         }
-        for metadata in ("cohort_size", "adv20", "float_mcap", "signal_role"):
-            if hasattr(row, metadata):
-                base[metadata] = getattr(row, metadata)
-        if signal_position is None or signal_position + horizon >= len(market_dates):
-            base["entry_status"] = "outside_calendar"
-            rows.append(base)
-            continue
-        planned_entry = market_dates[signal_position + 1]
-        planned_exit = market_dates[signal_position + horizon]
-        base["planned_entry_date"] = planned_entry
-        base["planned_exit_date"] = planned_exit
-        group = by_code.get(row.code)
-        if group is None:
-            base["entry_status"] = "no_code_price"
-            rows.append(base)
-            continue
-        future = group.loc[group["date"].ge(planned_entry) & group["date"].le(evaluation_end)].copy()
-        entries = future.loc[future["open"].gt(0)].sort_values("date")
-        if entries.empty:
-            base["entry_status"] = "no_entry_price"
-            rows.append(base)
-            continue
-        entry = entries.iloc[0]
-        base["entry_date"] = entry["date"]
-        base["entry_open"] = float(entry["open"])
-        base["entry_status"] = "planned" if entry["date"] == planned_entry else "delayed_missing_bar"
-        exits = future.loc[future["date"].ge(planned_exit) & future["close"].gt(0)].sort_values("date")
-        if not exits.empty:
-            exit_row = exits.iloc[0]
-            base["exit_status"] = "planned" if exit_row["date"] == planned_exit else "delayed_missing_bar"
-        else:
-            last = future.loc[future["close"].gt(0)].sort_values("date")
-            if last.empty:
-                base["entry_status"] = "no_exit_price"
-                rows.append(base)
-                continue
-            exit_row = last.iloc[-1]
-            base["exit_status"] = "last_available_price"
-        if exit_row["date"] < entry["date"]:
-            base["entry_status"] = "entry_after_exit"
-            rows.append(base)
-            continue
-        base["exit_date"] = exit_row["date"]
-        base["exit_close"] = float(exit_row["close"])
-        rows.append(base)
-    result = pd.DataFrame(rows)
+    )
+    for metadata in ("cohort_size", "adv20", "float_mcap", "signal_role"):
+        if metadata in selected_frame.columns:
+            result[metadata] = selected_frame[metadata].to_numpy()
+
+    signal_positions = selected_frame["date"].map(positions)
+    valid = signal_positions.notna() & signal_positions.add(horizon).lt(len(market_dates))
+    result.loc[~valid, "entry_status"] = "outside_calendar"
+    valid_index = result.index[valid]
+    if len(valid_index) == 0:
+        return result.sort_values(["signal_date", "code"], kind="mergesort").reset_index(drop=True)
+
+    signal_pos = signal_positions.loc[valid].astype(int)
+    result.loc[valid, "planned_entry_date"] = [market_dates[pos + 1] for pos in signal_pos]
+    result.loc[valid, "planned_exit_date"] = [market_dates[pos + horizon] for pos in signal_pos]
+    result["_planned_entry_pos"] = -1
+    result["_planned_exit_pos"] = -1
+    result.loc[valid, "_planned_entry_pos"] = signal_pos.to_numpy() + 1
+    result.loc[valid, "_planned_exit_pos"] = signal_pos.to_numpy() + horizon
+
+    # merge_asof performs the next-observable-price lookup in one pass when both
+    # sides are sorted by the calendar position.  This replaces a per-trade
+    # DataFrame slice/copy and preserves exact-match and deferred-bar semantics.
+    open_prices = price_frame.loc[price_frame["open"].gt(0), ["code", "_market_pos", "date", "open"]]
+    entry_left = result.loc[valid, ["code", "_planned_entry_pos"]].copy()
+    entry_left["_row"] = entry_left.index
+    entry_left = entry_left.rename(columns={"_planned_entry_pos": "_target_pos"})
+    entry = pd.merge_asof(
+        entry_left.sort_values(["_target_pos", "code"], kind="mergesort"),
+        open_prices.rename(columns={"_market_pos": "_entry_pos", "date": "_entry_date", "open": "_entry_open"})
+        .sort_values(["_entry_pos", "code"], kind="mergesort"),
+        left_on="_target_pos", right_on="_entry_pos", by="code", direction="forward",
+        allow_exact_matches=True,
+    ).set_index("_row")
+    entry = entry.loc[entry["_entry_date"].le(evaluation_end) | entry["_entry_date"].isna()]
+    entry_ok = entry["_entry_date"].notna()
+    result.loc[entry.index[entry_ok], "entry_date"] = entry.loc[entry_ok, "_entry_date"]
+    result.loc[entry.index[entry_ok], "entry_open"] = entry.loc[entry_ok, "_entry_open"].astype(float)
+    result.loc[entry.index[entry_ok], "entry_status"] = np.where(
+        entry.loc[entry_ok, "_entry_pos"].eq(entry.loc[entry_ok, "_target_pos"]),
+        "planned", "delayed_missing_bar",
+    )
+    result.loc[entry.index[~entry_ok], "entry_status"] = "no_entry_price"
+
+    executable = entry.index[entry_ok]
+    if len(executable):
+        close_prices = price_frame.loc[
+            price_frame["close"].gt(0), ["code", "_market_pos", "date", "close"]
+        ].rename(columns={"_market_pos": "_exit_pos", "date": "_exit_date", "close": "_exit_close"})
+        exit_left = result.loc[executable, ["code", "_planned_exit_pos"]].copy()
+        exit_left["_entry_pos"] = entry.loc[executable, "_entry_pos"]
+        exit_left["_row"] = exit_left.index
+        exit_left = exit_left.rename(columns={"_planned_exit_pos": "_target_pos"})
+        exit_forward = pd.merge_asof(
+            exit_left.sort_values(["_target_pos", "code"], kind="mergesort"),
+            close_prices.sort_values(["_exit_pos", "code"], kind="mergesort"),
+            left_on="_target_pos", right_on="_exit_pos", by="code", direction="forward",
+            allow_exact_matches=True,
+        ).set_index("_row")
+        exit_forward = exit_forward.loc[
+            exit_forward["_exit_date"].le(evaluation_end) | exit_forward["_exit_date"].isna()
+        ]
+        exit_ok = exit_forward["_exit_date"].notna()
+
+        # If no close exists on/after the planned exit, settle at the last
+        # observable close after entry, matching the registered convention.
+        last_close = (
+            close_prices.sort_values(["code", "_exit_pos"], kind="mergesort")
+            .groupby("code", sort=False, as_index=False)
+            .tail(1)
+            .set_index("code")
+        )
+        fallback = exit_forward.loc[~exit_ok, ["code", "_entry_pos"]].join(
+            last_close[["_exit_pos", "_exit_date", "_exit_close"]], on="code"
+        )
+        fallback_ok = fallback["_exit_date"].notna() & fallback["_exit_pos"].ge(fallback["_entry_pos"])
+        for idx in fallback.index[fallback_ok]:
+            exit_forward.loc[idx, ["_exit_pos", "_exit_date", "_exit_close"]] = fallback.loc[
+                idx, ["_exit_pos", "_exit_date", "_exit_close"]
+            ]
+        exit_ok = exit_forward["_exit_date"].notna()
+        result.loc[exit_forward.index[exit_ok], "exit_date"] = exit_forward.loc[exit_ok, "_exit_date"]
+        result.loc[exit_forward.index[exit_ok], "exit_close"] = exit_forward.loc[exit_ok, "_exit_close"].astype(float)
+        result.loc[exit_forward.index[exit_ok], "exit_status"] = np.select(
+            [
+                exit_forward.loc[exit_ok, "_exit_pos"].eq(exit_forward.loc[exit_ok, "_target_pos"]),
+                exit_forward.loc[exit_ok, "_exit_pos"].gt(exit_forward.loc[exit_ok, "_target_pos"]),
+            ],
+            ["planned", "delayed_missing_bar"], default="last_available_price",
+        )
+        result.loc[exit_forward.index[~exit_ok], "exit_status"] = "no_exit_price"
+        entry_after_exit = exit_ok & exit_forward["_exit_date"].lt(result.loc[exit_forward.index, "entry_date"])
+        result.loc[exit_forward.index[entry_after_exit], "entry_status"] = "entry_after_exit"
     if result.empty:
         raise ValueError("trade window resolution produced no rows")
     return result.sort_values(["signal_date", "code"], kind="mergesort").reset_index(drop=True)
