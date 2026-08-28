@@ -745,7 +745,10 @@ def _build_signal_trades(
         if selected.empty:
             raise ValueError(f"signal mode {mode} selected no rows on {date.date()}")
         selected["signal_role"] = "retained"
-        selected["cohort_size"] = int(len(day))
+        # Equal-weight the retained set.  If a retained name later lacks an
+        # executable price, its share remains cash rather than being silently
+        # reallocated to other names by the simulator.
+        selected["cohort_size"] = int(len(selected))
         selected_parts.append(selected)
     selected_frame = pd.concat(selected_parts, ignore_index=True)
     excluded_frame = pd.concat(excluded_parts, ignore_index=True) if excluded_parts else joined.iloc[0:0].copy()

@@ -68,6 +68,7 @@ def test_c_track_runtime_path_excludes_lowest_predictions():
     assert selected["prediction"].min() == 1.0
     assert "y_excess20" in excluded.columns
     assert "adv20" in selected.columns
+    assert selected["cohort_size"].eq(len(selected)).all()
 
 
 def test_resolve_trade_window_defers_missing_bar_and_uses_last_price():
