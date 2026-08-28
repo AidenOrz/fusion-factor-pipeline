@@ -372,7 +372,11 @@ def resolve_trade_window(
         )
         result.loc[exit_forward.index[~exit_ok], "exit_status"] = "no_exit_price"
         entry_after_exit = exit_ok & exit_forward["_exit_date"].lt(result.loc[exit_forward.index, "entry_date"])
-        result.loc[exit_forward.index[entry_after_exit], "entry_status"] = "entry_after_exit"
+        after_exit_index = exit_forward.index[entry_after_exit]
+        result.loc[after_exit_index, "entry_status"] = "entry_after_exit"
+        result.loc[after_exit_index, "exit_status"] = "entry_after_exit"
+        result.loc[after_exit_index, "exit_date"] = pd.NaT
+        result.loc[after_exit_index, "exit_close"] = np.nan
     if result.empty:
         raise ValueError("trade window resolution produced no rows")
     return result.sort_values(["signal_date", "code"], kind="mergesort").reset_index(drop=True)

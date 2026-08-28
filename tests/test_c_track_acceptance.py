@@ -90,6 +90,16 @@ def test_resolve_trade_window_defers_missing_bar_and_uses_last_price():
     assert last["exit_status"] == "last_available_price"
     assert last["exit_date"] == calendar[1]
 
+    # A delayed entry after the planned exit is not executable and must not
+    # retain an earlier exit price.
+    late_panel = _panel(dates=6, codes=1)
+    late_panel = late_panel.loc[late_panel["date"] != calendar[1]].copy()
+    late_panel.loc[late_panel["date"] == calendar[2], "open"] = 0.0
+    late = resolve_trade_window(selected, late_panel, market_dates=calendar, horizon=2, evaluation_end=calendar[-1]).iloc[0]
+    assert late["entry_status"] == "entry_after_exit"
+    assert pd.isna(late["exit_date"])
+    assert pd.isna(late["exit_close"])
+
 
 def test_simulation_costs_reduce_equity_and_preserves_unfilled_capital():
     panel = _panel(dates=5, codes=2)
