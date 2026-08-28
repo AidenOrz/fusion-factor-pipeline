@@ -1,0 +1,38 @@
+{
+  "automatic_direction_flip": false,
+  "candidate_features_file": "config/factor_pool_b2_post_lofo_candidate_2026-08-28_features.json",
+  "candidate_grouping_file": "docs/B2_POST_LOFO_CANDIDATE_GROUPING_2026-08-28.csv",
+  "confirmation_status": "pending_selection_only_confirmation",
+  "cross_overlap_audit_file": "docs/B2_CROSS_OVERLAP_AUDIT_2026-08-28.csv",
+  "decision_date": "2026-08-28",
+  "failure_policy": "one registered put-back of the culprit family, then return to descriptive stage",
+  "feature_count": 35,
+  "label_gap_trading_days": 20,
+  "manual_exemptions": [
+    "manual__alpha_qg_f001__short",
+    "manual__alpha_qg_f008__short"
+  ],
+  "panel_scope": "full_market",
+  "production_config_mutation": false,
+  "removed_count": 79,
+  "removed_family_candidates": [
+    "gtja191",
+    "starter"
+  ],
+  "removed_info_type_candidates": [
+    "capital",
+    "momentum",
+    "volatility"
+  ],
+  "rule_priority": [
+    "manual_exemption",
+    "family_or_info_type_removal_union",
+    "retain"
+  ],
+  "schema_version": 1,
+  "selection_period": "2023-06-30..2024-09-12",
+  "source_config": "config/factor_pool_b2_adjudicated_2026-08-27.json",
+  "source_features_file": "config/factor_pool_b2_adjudicated_2026-08-27_features.json",
+  "status": "post_lofo_candidate_pool_not_frozen",
+  "universe": "b2"
+}

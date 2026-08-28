@@ -42,6 +42,7 @@ def run_huber_baseline(
     n_splits: int = 4,
     gap_days: int = GAP_TRADING_DAYS,
     feature_columns: list[str] | None = None,
+    predictions_path: Path | str | None = None,
 ) -> dict[str, Any]:
     if universe not in {"b1", "b2", "b3"}:
         raise ValueError("universe must be one of: b1, b2, b3")
@@ -60,6 +61,7 @@ def run_huber_baseline(
     work[features] = work[features].replace([np.inf, -np.inf], np.nan)
     work = work.sort_values(["date", "code"], kind="mergesort").reset_index(drop=True)
     predictions = pd.Series(np.nan, index=work.index, dtype=float)
+    prediction_folds = pd.Series(pd.NA, index=work.index, dtype="Int64")
     folds: list[dict[str, Any]] = []
     fold_seed_quality: list[dict[str, Any]] = []
     for fold, (train_dates, test_dates) in enumerate(make_purged_splits(work["date"], n_splits, gap_days)):
@@ -89,6 +91,7 @@ def run_huber_baseline(
             )
         pred = np.mean(np.vstack(seed_predictions), axis=0)
         predictions.loc[test.index] = pred
+        prediction_folds.loc[test.index] = fold
         evaluated_columns = ["date", "code", target]
         if "y_excess20" not in evaluated_columns:
             evaluated_columns.append("y_excess20")
@@ -104,7 +107,30 @@ def run_huber_baseline(
         })
     evaluated = work.loc[predictions.notna()].copy()
     evaluated["prediction"] = predictions.loc[evaluated.index]
-    return {
+    evaluated["fold"] = prediction_folds.loc[evaluated.index].astype(int)
+    saved_predictions = None
+    if predictions_path is not None:
+        destination = Path(predictions_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        optional = [
+            column for column in (
+                "industry", "float_mcap", "ret_20d", "adv20", "is_st",
+                "open", "close", "benchmark_open", "benchmark_close",
+            )
+            if column in evaluated.columns
+        ]
+        prediction_frame = evaluated[["date", "code", "fold", target, "y_excess20", *optional]].copy()
+        prediction_frame = prediction_frame.rename(columns={target: "target_value"})
+        prediction_frame.insert(3, "target_name", target)
+        prediction_frame.insert(3, "universe", universe)
+        prediction_frame["prediction"] = evaluated["prediction"].to_numpy()
+        prediction_frame = prediction_frame.sort_values(["date", "code"], kind="mergesort")
+        if destination.suffix.lower() == ".csv":
+            prediction_frame.to_csv(destination, index=False, encoding="utf-8-sig")
+        else:
+            prediction_frame.to_parquet(destination, index=False)
+        saved_predictions = str(destination.resolve())
+    result = {
         "classification": "development_descriptive_only",
         "scope": "full_market",
         "estimator": "lightgbm.LGBMRegressor",
@@ -121,6 +147,10 @@ def run_huber_baseline(
         "fold_seed_quality": fold_seed_quality,
         "folds": folds,
     }
+    if saved_predictions is not None:
+        result["predictions_file"] = saved_predictions
+        result["predictions_are_strictly_out_of_fold"] = True
+    return result
 
 
 def main() -> int:
