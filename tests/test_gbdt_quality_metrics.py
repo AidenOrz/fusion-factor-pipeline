@@ -2,7 +2,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from bridge.gbdt import fold_ic_summary, prediction_quality_summary
+from bridge.gbdt import (
+    assert_target_gap_matches_horizon,
+    fold_ic_summary,
+    prediction_quality_summary,
+)
 from bridge.benchmark import ndcg_random_baseline
 
 
@@ -55,3 +59,10 @@ def test_prediction_quality_empty_frame_is_explicit():
     )
     assert metrics["ic_days"] == 0
     assert metrics["mean_daily_spearman_ic"] is None
+
+
+def test_exret_target_horizon_must_match_purged_gap():
+    assert assert_target_gap_matches_horizon("EXRET20", 20) == 20
+    assert assert_target_gap_matches_horizon("EXRET60", 60) == 60
+    with pytest.raises(ValueError, match="must equal"):
+        assert_target_gap_matches_horizon("EXRET60", 20)

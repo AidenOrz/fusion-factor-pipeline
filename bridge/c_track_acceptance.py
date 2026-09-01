@@ -24,6 +24,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bridge.paths import configured_upstream_path, upstream_path, validate_startup_or_exit
+from bridge.temporal import assert_selection_evaluation_label_gap
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -122,7 +123,9 @@ def load_frozen_contract(path: str | Path = DEFAULT_FROZEN) -> dict[str, Any]:
         raise ValueError("frozen contract does not register the neutral Huber scorer")
     selection_start, selection_end = _date_range(frozen["selection_period"])
     evaluation_start, evaluation_end = _date_range(frozen["evaluation_period"])
-    if evaluation_start <= selection_end or (evaluation_end - evaluation_start).days < HORIZON:
+    if int(frozen.get("label_horizon_trading_days", 0)) != HORIZON:
+        raise ValueError("frozen label horizon must match the C-track holding horizon")
+    if evaluation_start <= selection_end:
         raise ValueError("frozen evaluation range is incompatible with a 20-day horizon")
     frozen["_selection_start"] = selection_start
     frozen["_selection_end"] = selection_end
@@ -156,6 +159,12 @@ def load_inputs(
     panel["close"] = pd.to_numeric(panel["close"], errors="coerce")
     panel["adv20"] = pd.to_numeric(panel["adv20"], errors="coerce")
     panel = panel.sort_values(["date", "code"], kind="mergesort").reset_index(drop=True)
+    assert_selection_evaluation_label_gap(
+        panel["date"],
+        frozen["_selection_end"],
+        frozen["_evaluation_start"],
+        label_horizon_trading_days=HORIZON,
+    )
 
     def read_predictions(path: str | Path, expected_model: str) -> pd.DataFrame:
         prediction = pd.read_parquet(_path(path))
@@ -204,8 +213,6 @@ def select_bottom_exclusion(
 
     _require_columns(predictions, ["date", "code", "prediction"], "predictions")
     _require_columns(panel, ["date", "code", "universe_b2"], "panel")
-    if not 0 < exclusion_fraction < 1:
-        raise ValueError("exclusion_fraction must be between zero and one")
     prediction_keys = _normalise_keys(predictions)[["date", "code", "prediction"]]
     frame = prediction_keys.merge(
         panel[["date", "code", "universe_b2", "y_excess20", "adv20", "float_mcap"]],
@@ -214,6 +221,18 @@ def select_bottom_exclusion(
     frame = frame.loc[frame["universe_b2"].fillna(False)].copy()
     if frame.empty:
         raise ValueError("no B2 rows remain after joining predictions")
+    return _partition_bottom_exclusion(frame, exclusion_fraction=exclusion_fraction)
+
+
+def _partition_bottom_exclusion(
+    frame: pd.DataFrame,
+    *,
+    exclusion_fraction: float,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Apply the registered C-track bottom-tail rule to an already joined frame."""
+
+    if not 0 < exclusion_fraction < 1:
+        raise ValueError("exclusion_fraction must be between zero and one")
     selected_parts: list[pd.DataFrame] = []
     excluded_parts: list[pd.DataFrame] = []
     for date, day in frame.groupby("date", sort=True):
@@ -225,6 +244,7 @@ def select_bottom_exclusion(
             raise ValueError(f"bottom exclusion removes the complete universe on {date.date()}")
         excluded["signal_role"] = "excluded_bottom"
         selected["signal_role"] = "retained"
+        selected["cohort_size"] = int(len(selected))
         selected_parts.append(selected)
         excluded_parts.append(excluded)
     selected = pd.concat(selected_parts, ignore_index=True).sort_values(["date", "code"], kind="mergesort")
@@ -723,18 +743,12 @@ def _build_signal_trades(
     joined = joined.loc[joined["universe_b2"].fillna(False)].copy()
     if joined.empty:
         raise ValueError("signal predictions have no B2 rows")
+    if mode == "c_track":
+        return _partition_bottom_exclusion(joined, exclusion_fraction=exclusion_fraction)
     selected_parts: list[pd.DataFrame] = []
     excluded_parts: list[pd.DataFrame] = []
     for date, day in joined.groupby("date", sort=True):
-        if mode == "c_track":
-            # C-track removes the lowest-scored tail; top-k keeps the highest.
-            ordered = day.sort_values(["prediction", "code"], ascending=[True, True], kind="mergesort")
-            n_excluded = max(1, int(math.ceil(len(ordered) * exclusion_fraction)))
-            selected = ordered.iloc[n_excluded:].copy()
-            excluded = ordered.iloc[:n_excluded].copy()
-            excluded["signal_role"] = "excluded_bottom"
-            excluded_parts.append(excluded)
-        elif mode == "top_k":
+        if mode == "top_k":
             ordered = day.sort_values(["prediction", "code"], ascending=[False, True], kind="mergesort")
             if top_k is None or top_k < 1:
                 raise ValueError("top_k must be positive for top_k mode")

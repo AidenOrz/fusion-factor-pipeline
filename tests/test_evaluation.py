@@ -1,14 +1,33 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
-from bridge.evaluation import _block_stability, _date_range
+from bridge.evaluation import _assert_registered_label_gap, _block_stability, _date_range
 
 
 def test_date_range_parses_registered_bounds():
     start, end = _date_range("2024-10-22..2025-12-31")
     assert start == pd.Timestamp("2024-10-22")
     assert end == pd.Timestamp("2025-12-31")
+
+
+def test_registered_evaluation_uses_trading_day_label_gap():
+    dates = pd.bdate_range("2024-09-12", periods=30)
+    panel = pd.DataFrame({"date": dates})
+    _assert_registered_label_gap(
+        panel,
+        (dates[0], dates[0]),
+        (dates[21], dates[-1]),
+        label_horizon_trading_days=20,
+    )
+    with pytest.raises(ValueError, match="label gap is too short"):
+        _assert_registered_label_gap(
+            panel,
+            (dates[0], dates[0]),
+            (dates[20], dates[-1]),
+            label_horizon_trading_days=20,
+        )
 
 
 def test_block_stability_requires_all_blocks_to_have_the_same_nonzero_sign():

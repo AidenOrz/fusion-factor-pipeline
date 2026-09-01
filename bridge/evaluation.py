@@ -22,6 +22,7 @@ if __package__ in (None, ""):
 from bridge.ablation import _read_features, _write_json
 from bridge.confirmation import bottom_decile_tradeability, decile_analysis
 from bridge.gbdt import ENSEMBLE_SEEDS, prediction_quality_summary
+from bridge.temporal import assert_selection_evaluation_label_gap
 
 try:
     import lightgbm as lgb
@@ -56,6 +57,8 @@ def _load_frozen(path: str | Path) -> dict[str, Any]:
         raise ValueError("frozen config does not authorize evaluation")
     if frozen.get("automatic_direction_flip") is not False:
         raise ValueError("frozen config must prohibit automatic direction flips")
+    if int(frozen.get("label_horizon_trading_days", 0)) < 1:
+        raise ValueError("frozen config must define a positive label horizon")
     return frozen
 
 
@@ -117,6 +120,21 @@ def _date_range(value: str) -> tuple[pd.Timestamp, pd.Timestamp]:
     if len(parts) != 2:
         raise ValueError(f"invalid date range: {value}")
     return pd.Timestamp(parts[0]), pd.Timestamp(parts[1])
+
+
+def _assert_registered_label_gap(
+    panel: pd.DataFrame,
+    selection_range: tuple[pd.Timestamp, pd.Timestamp],
+    evaluation_range: tuple[pd.Timestamp, pd.Timestamp],
+    *,
+    label_horizon_trading_days: int,
+) -> None:
+    assert_selection_evaluation_label_gap(
+        panel["date"],
+        selection_range[1],
+        evaluation_range[0],
+        label_horizon_trading_days=label_horizon_trading_days,
+    )
 
 
 def _block_stability(frame: pd.DataFrame, target: str, blocks: int = 3) -> dict[str, Any]:
@@ -213,6 +231,12 @@ def run_evaluation(
     panel = _load_panel(manifest["panel_file"], features)
     selection_range = _date_range(manifest["selection_period"])
     evaluation_range = _date_range(manifest["evaluation_period"])
+    _assert_registered_label_gap(
+        panel,
+        selection_range,
+        evaluation_range,
+        label_horizon_trading_days=int(frozen["label_horizon_trading_days"]),
+    )
     model_results = []
     decile_summaries: dict[str, dict[str, Any]] = {}
     q1_summaries: dict[str, dict[str, Any]] = {}

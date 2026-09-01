@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ if __package__ in (None, ""):
 from bridge.benchmark import attach_forward_returns, load_index, ndcg_at_k, ndcg_random_baseline
 from bridge.factor_selection import daily_ic
 from bridge.paths import configured_upstream_path, upstream_path, validate_startup_or_exit
+from bridge.temporal import first_label_safe_evaluation_date
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PANEL = PROJECT_ROOT / "data" / "panel_fusion.parquet"
@@ -49,6 +51,27 @@ GAP_TRADING_DAYS = 20
 ENSEMBLE_SEEDS = (42, 43, 44)
 EVALUATION_STAGES = ("selection_ablation", "acceptance")
 PRIMARY_NDCG_KS = (5, 20)
+_EXRET_TARGET = re.compile(r"^EXRET([1-9][0-9]*)$")
+
+
+def exret_target_horizon_trading_days(target: str) -> int:
+    """Read the forward holding horizon encoded by an EXRET target name."""
+
+    match = _EXRET_TARGET.fullmatch(str(target))
+    if match is None:
+        raise ValueError("target must use the EXRET{positive_trading_days} schema")
+    return int(match.group(1))
+
+
+def assert_target_gap_matches_horizon(target: str, gap_days: int) -> int:
+    """Prevent a changed EXRET target from silently retaining a stale purge gap."""
+
+    horizon = exret_target_horizon_trading_days(target)
+    if gap_days != horizon:
+        raise ValueError(
+            f"purged gap ({gap_days}) must equal the {target} horizon ({horizon})"
+        )
+    return horizon
 
 
 def load_candidates(path: Path | str | None = None) -> pd.DataFrame:
@@ -103,17 +126,13 @@ def apply_feature_selection_cutoff(
     """Exclude selection rows and the forward-label net gap from evaluation."""
     if selection_end is None:
         return panel
-    if label_gap_days < 0:
-        raise ValueError("label_gap_days must be non-negative")
-    dates = pd.DatetimeIndex(pd.to_datetime(panel["date"].unique())).sort_values()
-    if dates.empty:
+    if panel.empty:
         return panel.iloc[0:0].copy()
-    cutoff = pd.Timestamp(selection_end)
-    cutoff_position = int(dates.searchsorted(cutoff, side="right") - 1)
-    evaluation_position = cutoff_position + label_gap_days + 1
-    if evaluation_position >= len(dates):
+    evaluation_start = first_label_safe_evaluation_date(
+        panel["date"], selection_end, label_horizon_trading_days=label_gap_days
+    )
+    if evaluation_start is None:
         return panel.iloc[0:0].copy()
-    evaluation_start = dates[evaluation_position]
     return panel.loc[panel["date"] >= evaluation_start].copy()
 
 
@@ -126,12 +145,9 @@ def feature_selection_evaluation_start(
     """Return the first date eligible after selection and its label gap."""
     if selection_end is None:
         return None
-    unique = pd.DatetimeIndex(pd.to_datetime(dates).unique()).sort_values()
-    if unique.empty:
-        return None
-    position = int(unique.searchsorted(pd.Timestamp(selection_end), side="right") - 1)
-    start = position + label_gap_days + 1
-    return unique[start] if start < len(unique) else None
+    return first_label_safe_evaluation_date(
+        dates, selection_end, label_horizon_trading_days=label_gap_days
+    )
 
 
 def static_topk_summary(
@@ -319,6 +335,7 @@ def walk_forward_gbdt(
         raise ValueError(
             f"evaluation_stage must be one of {EVALUATION_STAGES}, got {evaluation_stage!r}"
         )
+    assert_target_gap_matches_horizon(target, gap_days)
     work = panel.dropna(subset=[target]).copy()
     selection_eval_start = feature_selection_evaluation_start(
         work["date"], feature_selection_end, label_gap_days=gap_days
@@ -629,6 +646,7 @@ def main() -> int:
         print(json.dumps(calibration, ensure_ascii=False, indent=2, sort_keys=True))
 
     if args.mode in ("walk-forward", "both"):
+        target_horizon = exret_target_horizon_trading_days(args.target)
         panel = load_fusion_panel(args.panel)
         if args.features_file:
             feature_columns, feature_selection_end = load_feature_columns(args.features_file)
@@ -658,7 +676,9 @@ def main() -> int:
         daily = pd.read_parquet(daily_panel_path)
         daily["date"] = pd.to_datetime(daily["date"], errors="raise")
         daily["code"] = daily["code"].astype(str).str.zfill(6)
-        daily_returns = attach_forward_returns(daily, load_index(index_path))
+        daily_returns = attach_forward_returns(
+            daily, load_index(index_path), horizon=target_horizon
+        )
         result = walk_forward_gbdt(
             panel,
             feature_columns,
