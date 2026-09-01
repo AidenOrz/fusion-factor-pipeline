@@ -1,7 +1,7 @@
 # HANDOFF — 当前稳定点与下一步
 
-> 更新时间：2026-08-28
-> 状态：37 因子池已通过并消费一次性内部 Evaluation；C 轨评分源已固定为 neutral 单模型，验收基准冲突已于 2026-08-28 裁决。下一步为冻结 C 轨经济验收。
+> 更新时间：2026-09-01
+> 状态：37 因子池已完成内部 Evaluation；C 轨经济验收已在用户授权的有限实现缺陷例外下完成并通过。`production_authorized=false`；下一步是在前向观察前修复 label gap 绑定与真实交易日净空断言。
 
 ## 1. 最后稳定点
 
@@ -21,6 +21,8 @@
   - `runs/factor_evaluation_v1_b2_frozen_2026-08-28/`：一次性内部历史留出结果，`evaluation_consumed=true`、`evaluation_pass=true`、`production_authorized=false`。
   - `docs/B2_EVALUATION_REPORT_2026-08-28.md`：结果、边界和下一步的可读报告。
   - `docs/WORK_REPORT_2026-08-28_B2_FREEZE_EVALUATION.md`：冻结评审、因子往返、Evaluation 证据与 C 轨选择依据。
+  - `runs/c_track_acceptance_v1_b2_frozen_2026-08-28/`：追认的有效 C 轨内部历史经济验收，机制层与机会成本层均通过。
+  - `docs/WORK_REPORT_2026-09-01_C_TRACK_ACCEPTANCE_ADJUDICATION.md`：四个决策产物、实现缺陷例外、有效运行与未改变的生产边界。
 - 观察锁箱：
   - `artifacts/dev_lockbox/dev/`：active，3 个非空 live 信号日已追加，`verify` 通过。
 
@@ -31,6 +33,7 @@
 - DeepSeek v4-flash/pro 是唯一模型；`deepseek-chat` 是旧别名。
 - LLM 每次运行有完整记录：`runs/llm_miner/<UTC>/`。
 - 2026-08-28 v6 健康检查：版本 `6.5.0.dev0`，M8 `preflight/started/executed` 均为 true；本轮 B2 Evaluation 的 `clean_2026_oos_access=false`。
+- C 轨最终有效运行：毛年化超额 `3.367%`、1x 年化超额 `3.384%`、2x 累计超额 `4.031%`、1x 相对最大回撤 `0.663%`；50/50 机会成本年化超额 `4.660%`。这是一项用户明确授权的、仅限本次实现缺陷的追认，不是未来历史重跑的通行证。
 
 ## 3. 尚未完成 / 待决策
 
@@ -43,11 +46,10 @@
 - [x] 35 因子首轮确认 raw IC 未过；按预注册规则唯一一次放回 `starter` 后，37 因子池双 Huber 确认通过。
 - [x] 冻结评审选择 C 主轨、底部 10% 剔除、20 日标签；`gtja_090` 明确维持出局。冻结配置为 `config/factor_pool_b2_frozen_2026-08-28.json`。
 - [x] 一次性内部 Evaluation 已消费并通过：raw/neutral IC `0.134586/0.125299`，HAC IC_IR `0.255165/0.393278`，两线三个时间块均为正且十分位结构保持。Evaluation 结果不得用于修改因子、方向、horizon 或验收轨。
-- [ ] 下一步只做冻结 C 轨经济验收：
-  1. 按 `C_TRACK_ACCEPTANCE_PREREG_2026-08-28.md` 已登记的 neutral 单模型、滑点、调仓频率、20 日重叠持仓和停牌/涨跌停成交语义执行。
-  2. 以 B2 域等权为唯一第一层机制硬基准，报告扣费后的年化超额、分期稳定性、超额回撤、换手和 R 分布。
-  3. 同时登记中证 1000、中证 2000、50/50 混合净超额；50/50 混合净超额 `> 0` 为次级判定，不能否决机制层；上证指数只进附录。
-  4. 同批生成 raw 对照与 A 轨 Top-5/Top-10 附录，不以其结果改轨或改模型。
+- [x] 冻结 C 轨经济验收：最终 `325f458` 运行通过机制层与机会成本层。两个早期 failed 产物因未实现“保留池等权”的资金分母错误，经 2026-09-01 用户明确授权，追认为不消费结果；完整边界见 C 轨裁决工作报告。
+- [ ] 前向观察前修复两处泄漏口：目标 horizon 必须绑定 purged gap；selection/evaluation 边界必须按真实交易日历满足 `horizon + 1` 个日期位置差。当前 `2024-09-12 -> 2024-10-22` 恰有 20 个中间交易日，但不应继续靠人工留缝。
+- [ ] 前向观察前去除 C 轨生产路径的重复底部剔除实现，并复用 close 矩阵，避免验收夜同类复制逻辑再度偏离。
+- [ ] 重新物化并保存冻结 neutral Huber 三种子评分器，先与既有 Evaluation `predictions.parquet` 做等价校验，再从新的预先声明日期开始只读影子观察。
 
 ## 4. 恢复入口
 
@@ -56,8 +58,11 @@ cd C:\Users\Lenovo\Documents\New project\fusion-factor-pipeline
 python tests/run_p0_smoke.py
 Get-Content -Raw runs/factor_evaluation_v1_b2_frozen_2026-08-28/evaluation_decision.json
 Get-Content -Raw docs/B2_EVALUATION_REPORT_2026-08-28.md
+Get-Content -Raw docs/WORK_REPORT_2026-09-01_C_TRACK_ACCEPTANCE_ADJUDICATION.md
+Get-Content -Raw runs/c_track_acceptance_v1_b2_frozen_2026-08-28/acceptance_decision.json
 ```
 
 不要再次执行 `python bridge/evaluation.py run`：`evaluation_decision.json` 已存在，本次一次性 Evaluation 已消费。
+不要再次执行 C 轨历史验收：本次追认只确认已完成的最终运行，不授权任何新的历史重跑。
 
 无凭据保存在项目文件；DeepSeek key 在 `QuantGPT/.env`（gitignored）。
