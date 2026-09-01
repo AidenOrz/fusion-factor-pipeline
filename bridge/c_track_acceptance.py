@@ -415,11 +415,22 @@ def _annualized_return(equity: pd.Series) -> float | None:
     return float((clean.iloc[-1] / clean.iloc[0]) ** (TRADING_DAYS_PER_YEAR / (len(clean) - 1)) - 1.0)
 
 
+def build_close_matrix(panel: pd.DataFrame) -> pd.DataFrame:
+    """Materialize the reusable date-by-code close matrix for all simulations."""
+
+    _require_columns(panel, ["date", "code", "close"], "price panel")
+    prices = _normalise_keys(panel)[["date", "code", "close"]]
+    if prices.duplicated(["date", "code"]).any():
+        raise ValueError("price panel contains duplicate (date, code) keys")
+    return prices.pivot(index="date", columns="code", values="close").sort_index()
+
+
 def simulate_cohort_portfolio(
     trades: pd.DataFrame,
     panel: pd.DataFrame,
     *,
     market_dates: pd.DatetimeIndex | None = None,
+    close_matrix: pd.DataFrame | None = None,
     cost_multiplier: float = 1.0,
     cohort_days: int = COHORT_DAYS,
 ) -> dict[str, Any]:
@@ -463,7 +474,9 @@ def simulate_cohort_portfolio(
     dates = dates[(dates >= start) & (dates <= end)]
     if dates.empty:
         raise ValueError("trade dates do not overlap the price calendar")
-    close_pivot = panel.pivot_table(index="date", columns="code", values="close", aggfunc="last").reindex(dates)
+    close_pivot = (
+        build_close_matrix(panel) if close_matrix is None else close_matrix
+    ).reindex(dates)
     entries = {date: group for date, group in frame.groupby("entry_date", sort=False)}
     exits = {date: group for date, group in frame.groupby("exit_date", sort=False)}
     holdings: dict[str, float] = defaultdict(float)
@@ -796,7 +809,9 @@ def _run_simulation(
     mode: str,
     market_dates: pd.DatetimeIndex,
     evaluation_end: pd.Timestamp,
+    close_matrix: pd.DataFrame | None = None,
     top_k: int | None = None,
+    cost_multipliers: Iterable[float] = (0.0, *COST_MULTIPLIERS),
 ) -> tuple[dict[float, dict[str, Any]], pd.DataFrame, pd.DataFrame]:
     if mode == "b2_equal_weight":
         selected = _build_b2_baseline_selection(predictions["date"].unique(), panel)
@@ -807,9 +822,13 @@ def _run_simulation(
         selected, panel, market_dates=market_dates, horizon=HORIZON, evaluation_end=evaluation_end
     )
     simulations: dict[float, dict[str, Any]] = {}
-    for multiplier in (0.0, *COST_MULTIPLIERS):
+    for multiplier in cost_multipliers:
         simulations[multiplier] = simulate_cohort_portfolio(
-            resolved, panel, market_dates=market_dates, cost_multiplier=multiplier
+            resolved,
+            panel,
+            market_dates=market_dates,
+            close_matrix=close_matrix,
+            cost_multiplier=multiplier,
         )
     return simulations, resolved, excluded
 
@@ -842,12 +861,23 @@ def run_acceptance(
     panel = inputs["panel"]
     frozen = inputs["frozen"]
     market_dates, _ = _calendar_positions(panel)
+    close_matrix = build_close_matrix(panel)
     evaluation_end = frozen["_evaluation_end"]
     neutral_sim, neutral_trades, excluded = _run_simulation(
-        inputs["neutral_predictions"], panel, mode="c_track", market_dates=market_dates, evaluation_end=evaluation_end
+        inputs["neutral_predictions"],
+        panel,
+        mode="c_track",
+        market_dates=market_dates,
+        evaluation_end=evaluation_end,
+        close_matrix=close_matrix,
     )
     baseline_sim, baseline_trades, _ = _run_simulation(
-        inputs["neutral_predictions"], panel, mode="b2_equal_weight", market_dates=market_dates, evaluation_end=evaluation_end
+        inputs["neutral_predictions"],
+        panel,
+        mode="b2_equal_weight",
+        market_dates=market_dates,
+        evaluation_end=evaluation_end,
+        close_matrix=close_matrix,
     )
     strategy_by_cost = {key: value for key, value in neutral_sim.items()}
     benchmark_by_cost = {key: value for key, value in baseline_sim.items()}
@@ -873,7 +903,14 @@ def run_acceptance(
         rows: dict[str, Any] = {}
         for top_k in (5, 10, 20):
             simulations, trades, _ = _run_simulation(
-                prediction, panel, mode="top_k", top_k=top_k, market_dates=market_dates, evaluation_end=evaluation_end
+                prediction,
+                panel,
+                mode="top_k",
+                top_k=top_k,
+                market_dates=market_dates,
+                evaluation_end=evaluation_end,
+                close_matrix=close_matrix,
+                cost_multipliers=(0.0, 1.0),
             )
             rows[str(top_k)] = {
                 "gross": simulations[0.0]["annualized_return"],

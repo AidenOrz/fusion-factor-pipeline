@@ -10,6 +10,7 @@ from bridge.c_track_acceptance import (
     _curve_metrics,
     _build_b2_baseline_selection,
     _build_signal_trades,
+    build_close_matrix,
     compute_index_benchmarks,
     load_frozen_contract,
     resolve_trade_window,
@@ -120,6 +121,34 @@ def test_simulation_costs_reduce_equity_and_preserves_unfilled_capital():
     assert gross["daily"]["equity"].iloc[-1] > net["daily"]["equity"].iloc[-1]
     assert gross["daily"]["cash"].iloc[0] > 0.5
     assert net["mean_daily_two_sided_turnover"] > 0
+
+
+def test_simulation_reuses_a_close_matrix_without_changing_equity():
+    panel = _panel(dates=5, codes=2)
+    dates = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    trades = pd.DataFrame(
+        {
+            "signal_date": [dates[0]],
+            "code": ["000001"],
+            "entry_date": [dates[1]],
+            "exit_date": [dates[3]],
+            "entry_open": [9.95],
+            "exit_close": [10.3],
+            "cohort_size": [1],
+        }
+    )
+    uncached = simulate_cohort_portfolio(
+        trades, panel, market_dates=dates, cost_multiplier=1.0, cohort_days=2
+    )
+    cached = simulate_cohort_portfolio(
+        trades,
+        panel,
+        market_dates=dates,
+        close_matrix=build_close_matrix(panel),
+        cost_multiplier=1.0,
+        cohort_days=2,
+    )
+    pd.testing.assert_frame_equal(uncached["daily"], cached["daily"])
 
 
 def test_curve_metrics_reports_relative_drawdown():
