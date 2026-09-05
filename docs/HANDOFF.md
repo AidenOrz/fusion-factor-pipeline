@@ -1,18 +1,16 @@
 # HANDOFF — 当前稳定点与下一步
 
-> 更新时间：2026-09-05
-> 状态：37 因子池的内部 Evaluation 历史记录保留；本轮发现并修复 C 轨费用、首日收益、机会成本执行规则等遗漏。旧 C 轨 passed 是原实现的历史结果，不能证明修复版通过。未重跑历史验收，`production_authorized=false`。时间边界修复早已提交，不再是待办。
+> 更新时间：2026-09-05（复算定案后）
+> 状态：C 轨经济验收已按 `C_TRACK_RECAST_PREREG_2026-09-05.md` 完成单次复算并**定案通过**（机制层与机会成本层均过，`production_authorized=false`）。v1 运行改分类为历史参照。下一步：评分器等价校验 → 前向观察协议预注册 → 只读影子观察。
 
-## 本轮修复与恢复位置（2026-09-05）
+## 本轮修复与复算定案（2026-09-05）
 
-- 修改范围：`bridge/c_track_acceptance.py`、`tests/test_c_track_acceptance.py` 和本交接；未提交。开始时的五个未跟踪文件保持原样。
-- 已验证并修复：买入费用重复扣除；首日收益、年化和首日相对回撤遗漏；分期统计丢失首日收益；50/50 指数抹掉首日收益；晚入场与退出同时延迟时绕过计划窗口；外部日历排除价格行后 asof 键类型不一致；无 cohort_size 时未成交资金被重分配；实时剔除不应依赖未来标签。
-- 机会成本原实现仅使用无费用买入持有指数，与预注册的同费用、同持有规则不符。验收调用现传入信号日及市场日历，复用 20 日队列和 1x 费用模拟。未传信号日的旧诊断接口仍保留被动指数曲线。
-- 复现证据：前八个新增测试在修改实现前均失败；固定价单笔交易原净值 `0.9940079840`，正确单边各 0.2% 后应为 `0.9960079840`。旧固定价指数净值为 `1.0`，单个 1/20 队列应为 `0.9998003992`。这些都是合成数据，不是历史验收重跑。
-- 验证：C 轨 19 项测试通过；P0 冒烟和 `tests/run_bugfix_smoke.py` 通过。完整回归的最终结果见本轮完成记录。P0 需要在当前进程设置 `A_SHARE_KLINE_DATA_ROOT`，本次核实目录为 `C:\Users\Lenovo\Documents\New project\a-share-kline-data`。
-- 重要边界：未修改冻结配置、模型或历史 runs；未新增 hash、contract、baseline 或 gate。下文的历史通过数值仅描述原运行，不是修复版验收结果。
-- 未完成：冻结三种子评分器保存及预测等价校验；行业历史 PIT 数据；新前向观察日期与执行；修复版历史验收的处理裁决。本轮没有足够依据宣称项目所有潜在 bug 均已清除。
-- 下一步：先决定旧 C 轨历史验收在新缺陷证据下如何处理；继续实现评分器保存和纯预测等价验证；从预先声明的新日期启动影子观察。不要直接重跑历史验收。
+- 09-05 上午：修复 C 轨模拟器 9 项缺陷并提交 `f5ca31f`（费用双扣、首日收益、分期首日、混合指数首日、晚入场边界、asof 键类型、未成交资金、实时剔除未来标签、机会成本同费用同持有规则），证据与边界见 `docs/BUGFIX_REPORT_2026-09-05.md`。
+- 09-05 下午：用户授权复算。登记提交 `d858d1c`（复算预注册 + manifest/decision 内嵌 `code_commit` + 端到端合成验收测试）；同日以该冻结点单次运行 `runs/c_track_acceptance_v2_recast_2026-09-05/`，产物哈希与登记提交一致，一次落盘无重跑。
+- 复算结论：机制层毛年化超额 +3.353%（门槛 2%）、1x 净 +3.360%（门槛 1%）、2x 累计 +4.030%、回撤 0.659%（上限 5%）、三段分期两段以上为正——五项门全过；机会成本 50/50 混合净超额 +6.374% > 0（v1 为 +4.660%，指数现承担同款队列费用）。466,402 笔交易与剔除尾部（51,970 股票日、均值 -1.952%）与 v1 完全一致。
+- v1 处置：`runs/c_track_acceptance_v1_b2_frozen_2026-08-28/` 及 attempt 目录改为历史参照；09-01 裁决报告加 superseded 标头；08-28 预注册第八节加指针。逐项对照见 `docs/WORK_REPORT_2026-09-05_C_TRACK_RECAST.md`。
+- 边界：复算未消费任何新数据区间；未修改冻结配置、模型、历史 runs；任何登记条款变更须重新完整预注册。
+- P0 冒烟需在当前进程设置 `A_SHARE_KLINE_DATA_ROOT`，核实目录为 `C:\Users\Lenovo\Documents\New project\a-share-kline-data`。
 
 ## 1. 最后稳定点
 
@@ -32,8 +30,10 @@
   - `runs/factor_evaluation_v1_b2_frozen_2026-08-28/`：一次性内部历史留出结果，`evaluation_consumed=true`、`evaluation_pass=true`、`production_authorized=false`。
   - `docs/B2_EVALUATION_REPORT_2026-08-28.md`：结果、边界和下一步的可读报告。
   - `docs/WORK_REPORT_2026-08-28_B2_FREEZE_EVALUATION.md`：冻结评审、因子往返、Evaluation 证据与 C 轨选择依据。
-  - `runs/c_track_acceptance_v1_b2_frozen_2026-08-28/`：追认的有效 C 轨内部历史经济验收，机制层与机会成本层均通过。
-  - `docs/WORK_REPORT_2026-09-01_C_TRACK_ACCEPTANCE_ADJUDICATION.md`：四个决策产物、实现缺陷例外、有效运行与未改变的生产边界。
+  - `runs/c_track_acceptance_v1_b2_frozen_2026-08-28/`：历史参照（原实现产物，已被 09-05 复算取代为有效结果）。
+  - `docs/WORK_REPORT_2026-09-01_C_TRACK_ACCEPTANCE_ADJUDICATION.md`：四个决策产物、实现缺陷例外与时间线考据（已加 superseded 标头）。
+  - `runs/c_track_acceptance_v2_recast_2026-09-05/`：**C 轨经济验收当前有效结果**（机制层与机会成本层均通过，manifest/decision 内嵌 commit `d858d1c`）。
+  - `docs/C_TRACK_RECAST_PREREG_2026-09-05.md` / `docs/WORK_REPORT_2026-09-05_C_TRACK_RECAST.md`：复算登记、执行记录与新旧对照。
 - 观察锁箱：
   - `artifacts/dev_lockbox/dev/`：active，3 个非空 live 信号日已追加，`verify` 通过。
 
@@ -44,7 +44,7 @@
 - DeepSeek v4-flash/pro 是唯一模型；`deepseek-chat` 是旧别名。
 - LLM 每次运行有完整记录：`runs/llm_miner/<UTC>/`。
 - 2026-08-28 v6 健康检查：版本 `6.5.0.dev0`，M8 `preflight/started/executed` 均为 true；本轮 B2 Evaluation 的 `clean_2026_oos_access=false`。
-- C 轨最终有效运行：毛年化超额 `3.367%`、1x 年化超额 `3.384%`、2x 累计超额 `4.031%`、1x 相对最大回撤 `0.663%`；50/50 机会成本年化超额 `4.660%`。这是一项用户明确授权的、仅限本次实现缺陷的追认，不是未来历史重跑的通行证。
+- C 轨当前有效结果（v2 复算，commit `d858d1c`）：毛年化超额 `3.353%`、1x 年化超额 `3.360%`、2x 累计超额 `4.030%`、1x 相对最大回撤 `0.659%`；50/50 机会成本年化超额 `6.374%`。v1 数值（毛 3.367%/净 3.384%/回撤 0.663%/机会成本 4.660%）仅作历史参照。任何后续条款变更须重新完整预注册。
 
 ## 3. 尚未完成 / 待决策
 
@@ -57,10 +57,12 @@
 - [x] 35 因子首轮确认 raw IC 未过；按预注册规则唯一一次放回 `starter` 后，37 因子池双 Huber 确认通过。
 - [x] 冻结评审选择 C 主轨、底部 10% 剔除、20 日标签；`gtja_090` 明确维持出局。冻结配置为 `config/factor_pool_b2_frozen_2026-08-28.json`。
 - [x] 一次性内部 Evaluation 已消费并通过：raw/neutral IC `0.134586/0.125299`，HAC IC_IR `0.255165/0.393278`，两线三个时间块均为正且十分位结构保持。Evaluation 结果不得用于修改因子、方向、horizon 或验收轨。
-- [x] 冻结 C 轨经济验收：最终 `325f458` 运行通过机制层与机会成本层。两个早期 failed 产物因未实现“保留池等权”的资金分母错误，经 2026-09-01 用户明确授权，追认为不消费结果；完整边界见 C 轨裁决工作报告。
+- [x] 冻结 C 轨经济验收：2026-08-28 首次执行，两个早期 failed 产物经 09-01 追认为不消费；09-05 缺陷复核后按复算预注册单次重算并定案通过，v1 改历史参照。
 - [x] 前向观察前的时间边界修复（`65c0c03`）：`EXRET{N}` 目标必须使用 `N` 个交易日的 purge gap；selection/evaluation 以真实交易日历要求至少 `horizon + 1` 个日期位置差。已在冻结面板确认 `2024-09-12 -> 2024-10-22` 合法。
 - [x] C 轨生产路径已复用同一底部剔除函数，并在单次验收内复用 close 矩阵；Top-K 附录只模拟实际报告的 0x 与 1x 成本，避免无输出的成本档位重复计算。
-- [ ] 重新物化并保存冻结 neutral Huber 三种子评分器，先与既有 Evaluation `predictions.parquet` 做等价校验，再从新的预先声明日期开始只读影子观察。
+- [x] C 轨复算定案（2026-09-05）：登记提交 `d858d1c`、单次运行通过、manifest 内嵌 commit、v1 改历史参照；执行合规与逐项对照见复算预注册第八节与 `WORK_REPORT_2026-09-05_C_TRACK_RECAST.md`。
+- [ ] 重新物化并保存冻结 neutral Huber 三种子评分器，先与既有 Evaluation `predictions.parquet` 做等价校验。
+- [ ] 前向观察协议预注册（观察窗口、评估节奏、过/不过判据、失败处置），然后从预先声明的新日期开始只读影子观察；不得回填已可见日期。
 
 ## 4. 恢复入口
 
@@ -68,12 +70,12 @@
 cd C:\Users\Lenovo\Documents\New project\fusion-factor-pipeline
 python tests/run_p0_smoke.py
 Get-Content -Raw runs/factor_evaluation_v1_b2_frozen_2026-08-28/evaluation_decision.json
-Get-Content -Raw docs/B2_EVALUATION_REPORT_2026-08-28.md
-Get-Content -Raw docs/WORK_REPORT_2026-09-01_C_TRACK_ACCEPTANCE_ADJUDICATION.md
-Get-Content -Raw runs/c_track_acceptance_v1_b2_frozen_2026-08-28/acceptance_decision.json
+Get-Content -Raw runs/c_track_acceptance_v2_recast_2026-09-05/acceptance_decision.json
+Get-Content -Raw docs/C_TRACK_RECAST_PREREG_2026-09-05.md
+Get-Content -Raw docs/WORK_REPORT_2026-09-05_C_TRACK_RECAST.md
 ```
 
 不要再次执行 `python bridge/evaluation.py run`：`evaluation_decision.json` 已存在，本次一次性 Evaluation 已消费。
-不要再次执行 C 轨历史验收：本次追认只确认已完成的最终运行，不授权任何新的历史重跑。
+不要再次执行 C 轨验收：复算已定案（`runs/c_track_acceptance_v2_recast_2026-09-05/`），重跑需重新完整预注册并取得新的用户授权。
 
 无凭据保存在项目文件；DeepSeek key 在 `QuantGPT/.env`（gitignored）。
