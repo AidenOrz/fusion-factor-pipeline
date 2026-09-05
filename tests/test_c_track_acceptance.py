@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ from bridge.c_track_acceptance import (
     compute_index_benchmarks,
     load_frozen_contract,
     resolve_trade_window,
+    run_acceptance,
     select_bottom_exclusion,
     simulate_cohort_portfolio,
 )
@@ -296,3 +298,138 @@ def test_opportunity_indices_use_the_same_cohorts_and_costs(tmp_path):
         assert curves[name]["equity"].iloc[-1] == pytest.approx(expected)
     assert curves["csi1000"]["cash"].iloc[0] == pytest.approx(0.95)
     assert curves["csi1000"]["active_positions"].iloc[-1] == 0
+
+
+def _git_head_or_unknown() -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10
+        )
+        return proc.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _e2e_calendar() -> pd.DatetimeIndex:
+    return pd.bdate_range("2024-08-01", periods=130)
+
+
+def _e2e_panel(calendar: pd.DatetimeIndex) -> pd.DataFrame:
+    rows = []
+    for day, date in enumerate(calendar):
+        for code_index in range(10):
+            close = 10.0 + code_index + 0.05 * day
+            rows.append({
+                "date": date,
+                "code": f"{code_index + 1:06d}",
+                "open": close - 0.05,
+                "close": close,
+                "volume": 100_000.0,
+                "amount": 10_000_000.0,
+                "is_st": False,
+                "universe_b2": True,
+                "y_excess20": (code_index - 5.0) / 100.0,
+                "float_mcap": 1_000_000_000.0,
+                "adv20": 10_000_000.0,
+            })
+    return pd.DataFrame(rows)
+
+
+def _e2e_predictions(signal_dates: pd.DatetimeIndex) -> pd.DataFrame:
+    rows = []
+    for day_index, date in enumerate(signal_dates):
+        for code_index in range(10):
+            rows.append({
+                "date": date,
+                "code": f"{code_index + 1:06d}",
+                "prediction": ((code_index * 7 + day_index * 3) % 13) / 13.0,
+            })
+    return pd.DataFrame(rows)
+
+
+def _e2e_index_csv(path, calendar: pd.DatetimeIndex, base: float, step: float) -> None:
+    frame = pd.DataFrame({
+        "date": calendar.strftime("%Y-%m-%d"),
+        "open": base + step * np.arange(len(calendar)) - 1.0,
+        "close": base + step * np.arange(len(calendar)),
+    })
+    frame.to_csv(path, index=False, encoding="utf-8-sig")
+
+
+def test_run_acceptance_end_to_end_on_synthetic_inputs(tmp_path):
+    calendar = _e2e_calendar()
+    panel_path = tmp_path / "panel.parquet"
+    _e2e_panel(calendar).to_parquet(panel_path, index=False)
+
+    signal_dates = calendar[51:80:4]
+    neutral = _e2e_predictions(signal_dates)
+    raw = neutral.assign(prediction=neutral["prediction"] * 0.5 + 0.1)
+    neutral_path = tmp_path / "neutral.parquet"
+    raw_path = tmp_path / "raw.parquet"
+    neutral.to_parquet(neutral_path, index=False)
+    raw.to_parquet(raw_path, index=False)
+
+    frozen = {
+        "schema_version": "1",
+        "status": "frozen_for_one_shot_evaluation",
+        "freeze_date": "2024-09-12",
+        "panel_scope": "full_market",
+        "universe": "b2",
+        "automatic_direction_flip": False,
+        "label_horizon_trading_days": 20,
+        "selection_period": "2024-08-01..2024-09-12",
+        "evaluation_period": "2024-10-11..2024-12-31",
+        "acceptance_track": {"primary": "C_bottom_exclusion", "bottom_exclusion_fraction": 0.10},
+        "models": [{"id": "huber_b2_neutral_rank", "target": "y_neutral_rank20_b2"}],
+    }
+    frozen_path = tmp_path / "frozen.json"
+    frozen_path.write_text(json.dumps(frozen), encoding="utf-8")
+
+    c1000_path = tmp_path / "csi1000.csv"
+    c2000_path = tmp_path / "csi2000.csv"
+    sse_path = tmp_path / "sse.csv"
+    _e2e_index_csv(c1000_path, calendar, 4000.0, 0.5)
+    _e2e_index_csv(c2000_path, calendar, 2500.0, 0.3)
+    _e2e_index_csv(sse_path, calendar, 3000.0, 0.4)
+
+    output_dir = tmp_path / "recast_out"
+    result = run_acceptance(
+        panel_path=panel_path,
+        neutral_predictions_path=neutral_path,
+        raw_predictions_path=raw_path,
+        frozen_path=frozen_path,
+        c1000_path=c1000_path,
+        c2000_path=c2000_path,
+        sse_path=sse_path,
+        output_dir=output_dir,
+    )
+
+    assert result["decision"]["code_commit"] == _git_head_or_unknown()
+    assert result["manifest"]["code_commit"] == result["decision"]["code_commit"]
+    gate = result["decision"]["mechanism_gate"]
+    assert set(gate) == {
+        "gross_annualized_excess_ge_2pct",
+        "net_1x_annualized_excess_ge_1pct",
+        "net_2x_excess_positive",
+        "at_least_two_positive_periods",
+        "relative_max_drawdown_le_5pct",
+        "passed",
+    }
+    assert result["decision"]["production_authorized"] is False
+    assert set(result["metrics"]["cost_sensitivity"]) == {"0x", "0.5x", "1x", "2x", "3x"}
+    assert {"csi1000", "csi2000", "csi_mix_50_50", "sse_appendix"}.issubset(
+        result["metrics"]["opportunity_cost"]
+    )
+    daily = pd.read_csv(output_dir / "c_track_daily.csv")
+    assert 0.9 < daily["equity"].iloc[0] < 1.1
+    for name in (
+        "acceptance_metrics.json",
+        "c_track_daily.csv",
+        "b2_equal_weight_daily.csv",
+        "c_track_trades.csv",
+        "excluded_bottom.csv",
+        "opportunity_cost.csv",
+        "topk_appendix.json",
+        "report.md",
+    ):
+        assert (output_dir / name).exists()

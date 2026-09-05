@@ -83,6 +83,24 @@ def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _git_commit() -> str:
+    """Best-effort HEAD commit for run provenance; "unknown" outside a repo."""
+
+    try:
+        import subprocess
+
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return proc.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
 def _normalise_keys(frame: pd.DataFrame) -> pd.DataFrame:
     result = frame.copy()
     result["date"] = pd.to_datetime(result["date"], errors="raise")
@@ -963,8 +981,10 @@ def run_acceptance(
         raw_appendix[label] = rows
 
     output.mkdir(parents=True, exist_ok=True)
+    code_commit = _git_commit()
     manifest = {
         "classification": "one_shot_internal_historical_economic_acceptance",
+        "code_commit": code_commit,
         "registered_contract": str(_path(frozen_path).resolve()),
         "panel": inputs["panel_path"],
         "neutral_predictions": inputs["neutral_predictions_path"],
@@ -984,6 +1004,7 @@ def run_acceptance(
     _write_json(output / "acceptance_metrics.json", metrics)
     decision = {
         "classification": metrics["classification"],
+        "code_commit": code_commit,
         "mechanism_gate": metrics["hard_gate"],
         "opportunity_cost_gate": metrics["opportunity_cost_secondary_gate"],
         "mechanism_conclusion": "passed" if metrics["hard_gate"]["passed"] else "failed_final_for_frozen_candidate",
