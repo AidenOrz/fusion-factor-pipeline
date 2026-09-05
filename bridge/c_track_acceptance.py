@@ -214,8 +214,11 @@ def select_bottom_exclusion(
     _require_columns(predictions, ["date", "code", "prediction"], "predictions")
     _require_columns(panel, ["date", "code", "universe_b2"], "panel")
     prediction_keys = _normalise_keys(predictions)[["date", "code", "prediction"]]
+    panel_columns = ["date", "code", "universe_b2"] + [
+        name for name in ("y_excess20", "adv20", "float_mcap") if name in panel.columns
+    ]
     frame = prediction_keys.merge(
-        panel[["date", "code", "universe_b2", "y_excess20", "adv20", "float_mcap"]],
+        _normalise_keys(panel)[panel_columns],
         on=["date", "code"], how="left", validate="one_to_one", suffixes=("", "_panel"),
     )
     frame = frame.loc[frame["universe_b2"].fillna(False)].copy()
@@ -286,6 +289,7 @@ def resolve_trade_window(
     price_frame = price_frame.loc[
         price_frame["_market_pos"].notna() & price_frame["date"].le(evaluation_end)
     ].copy()
+    price_frame["_market_pos"] = price_frame["_market_pos"].astype("int64")
 
     result = pd.DataFrame(
         {
@@ -344,7 +348,9 @@ def resolve_trade_window(
     )
     result.loc[entry.index[~entry_ok], "entry_status"] = "no_entry_price"
 
-    executable = entry.index[entry_ok]
+    late_entry = result["entry_date"].gt(result["planned_exit_date"])
+    result.loc[late_entry, ["entry_status", "exit_status"]] = "entry_after_exit"
+    executable = entry.index[entry_ok & ~late_entry.reindex(entry.index)]
     if len(executable):
         close_prices = price_frame.loc[
             price_frame["close"].gt(0), ["code", "_market_pos", "date", "close"]
@@ -408,11 +414,15 @@ def _side_cost(multiplier: float) -> float:
     return BASE_SIDE_COST * float(multiplier)
 
 
-def _annualized_return(equity: pd.Series) -> float | None:
+def _annualized_return(equity: pd.Series, *, initial_equity: float | None = None) -> float | None:
     clean = pd.to_numeric(equity, errors="coerce").dropna()
-    if len(clean) < 2 or clean.iloc[0] <= 0 or clean.iloc[-1] <= 0:
+    periods = len(clean) if initial_equity is not None else len(clean) - 1
+    if periods < 1:
         return None
-    return float((clean.iloc[-1] / clean.iloc[0]) ** (TRADING_DAYS_PER_YEAR / (len(clean) - 1)) - 1.0)
+    initial = initial_equity if initial_equity is not None else clean.iloc[0]
+    if initial <= 0 or clean.iloc[-1] <= 0:
+        return None
+    return float((clean.iloc[-1] / initial) ** (TRADING_DAYS_PER_YEAR / periods) - 1.0)
 
 
 def build_close_matrix(panel: pd.DataFrame) -> pd.DataFrame:
@@ -449,6 +459,8 @@ def simulate_cohort_portfolio(
     frame["signal_date"] = pd.to_datetime(frame["signal_date"], errors="raise")
     frame["entry_date"] = pd.to_datetime(frame["entry_date"], errors="coerce")
     frame["exit_date"] = pd.to_datetime(frame["exit_date"], errors="coerce")
+    if "cohort_size" not in frame.columns:
+        frame["cohort_size"] = frame.groupby("signal_date")["code"].transform("size")
     frame = frame.dropna(subset=["entry_date", "exit_date", "entry_open", "exit_close"]).copy()
     if frame.empty:
         raise ValueError("no executable trades remain")
@@ -461,7 +473,7 @@ def simulate_cohort_portfolio(
     frame["cohort_notional"] = 1.0 / float(cohort_days)
     frame["unit_notional"] = frame["cohort_notional"] / counts
     frame["units"] = frame["unit_notional"] / (frame["entry_open"].astype(float) * (1.0 + cost))
-    frame["buy_cash"] = frame["unit_notional"] * (1.0 + cost)
+    frame["buy_cash"] = frame["unit_notional"]
     frame["sell_cash"] = frame["units"] * frame["exit_close"].astype(float) * (1.0 - cost)
 
     panel = _normalise_keys(panel)
@@ -491,7 +503,7 @@ def simulate_cohort_portfolio(
             for row in entering.itertuples(index=False):
                 holdings[row.code] += float(row.units)
                 cash -= float(row.buy_cash)
-                buy_by_date[date] = buy_by_date.get(date, 0.0) + float(row.unit_notional)
+                buy_by_date[date] = buy_by_date.get(date, 0.0) + float(row.units * row.entry_open)
                 last_close.setdefault(row.code, float(row.entry_open))
         prices = close_pivot.loc[date] if date in close_pivot.index else pd.Series(dtype=float)
         for code in list(holdings):
@@ -521,15 +533,15 @@ def simulate_cohort_portfolio(
             "sell_notional": float(sell_by_date.get(date, 0.0)),
         })
     daily = pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
-    daily["daily_return"] = daily["equity"].pct_change().fillna(0.0)
-    prior_equity = daily["equity"].shift(1).fillna(daily["equity"].iloc[0])
+    prior_equity = daily["equity"].shift(1).fillna(1.0)
+    daily["daily_return"] = daily["equity"] / prior_equity - 1.0
     daily["two_sided_turnover"] = (daily["buy_notional"] + daily["sell_notional"]) / (2.0 * prior_equity)
     return {
         "daily": daily,
         "trades": frame,
         "cost_multiplier": float(cost_multiplier),
         "side_cost": float(cost),
-        "annualized_return": _annualized_return(daily["equity"]),
+        "annualized_return": _annualized_return(daily["equity"], initial_equity=1.0),
         "trade_count": int(len(frame)),
         "unresolved_count": int(len(trades) - len(frame)),
         "mean_daily_two_sided_turnover": float(daily["two_sided_turnover"].mean()),
@@ -538,26 +550,36 @@ def simulate_cohort_portfolio(
     }
 
 
-def _rebase_equity(series: pd.Series) -> pd.Series:
-    clean = pd.to_numeric(series, errors="coerce")
-    first = clean.dropna().iloc[0]
-    return clean / first
+def _curve_start_capital(frame: pd.DataFrame) -> float:
+    first = float(frame["equity"].iloc[0])
+    if "daily_return" in frame:
+        # Recover the capital before the first included day's return, also
+        # when the caller has sliced out a reporting period.
+        return first / (1.0 + float(frame["daily_return"].iloc[0]))
+    return first
 
 
 def _curve_metrics(strategy: pd.DataFrame, benchmark: pd.DataFrame) -> dict[str, Any]:
+    strategy = strategy.sort_values("date")
+    benchmark = benchmark.sort_values("date")
     joined = strategy[["date", "equity"]].merge(
-        benchmark[["date", "equity"]], on="date", how="inner", suffixes=("_strategy", "_benchmark")
-    )
-    if len(joined) < 2:
-        raise ValueError("strategy and benchmark do not have two common dates")
-    joined["strategy_equity"] = _rebase_equity(joined["equity_strategy"])
-    joined["benchmark_equity"] = _rebase_equity(joined["equity_benchmark"])
+        benchmark[["date", "equity"]], on="date", how="inner", suffixes=("_strategy", "_benchmark"),
+        validate="one_to_one",
+    ).sort_values("date")
+    has_returns = "daily_return" in strategy and "daily_return" in benchmark
+    if len(joined) < (1 if has_returns else 2):
+        raise ValueError("strategy and benchmark do not have enough common dates")
+    start = joined["date"].iloc[0]
+    strategy_capital = _curve_start_capital(strategy.loc[strategy["date"].ge(start)])
+    benchmark_capital = _curve_start_capital(benchmark.loc[benchmark["date"].ge(start)])
+    joined["strategy_equity"] = joined["equity_strategy"] / strategy_capital
+    joined["benchmark_equity"] = joined["equity_benchmark"] / benchmark_capital
     strategy_return = joined["strategy_equity"].iloc[-1] - 1.0
     benchmark_return = joined["benchmark_equity"].iloc[-1] - 1.0
-    strategy_ann = _annualized_return(joined["strategy_equity"])
-    benchmark_ann = _annualized_return(joined["benchmark_equity"])
+    strategy_ann = _annualized_return(joined["strategy_equity"], initial_equity=1.0 if "daily_return" in strategy else None)
+    benchmark_ann = _annualized_return(joined["benchmark_equity"], initial_equity=1.0 if "daily_return" in benchmark else None)
     relative = joined["strategy_equity"] / joined["benchmark_equity"]
-    relative_drawdown = 1.0 - relative / relative.cummax()
+    relative_drawdown = 1.0 - relative / relative.cummax().clip(lower=1.0)
     return {
         "dates": int(len(joined)),
         "start": str(joined["date"].min().date()),
@@ -597,18 +619,35 @@ def compute_index_benchmarks(
     *,
     start: pd.Timestamp,
     end: pd.Timestamp,
+    signal_dates: Iterable[pd.Timestamp] | None = None,
+    market_dates: pd.DatetimeIndex | None = None,
 ) -> dict[str, pd.DataFrame]:
-    """Load passive index curves for the opportunity-cost layer."""
+    """Use registered cohorts for acceptance, or passive curves for diagnostics."""
 
     curves: dict[str, pd.DataFrame] = {}
+    signals = pd.DatetimeIndex(signal_dates).unique().sort_values() if signal_dates is not None else None
     for name, path in index_paths.items():
         index = pd.read_csv(_path(path), encoding="utf-8-sig")
-        curves[name] = _index_equity(index, start, end)
+        if signals is None:
+            curves[name] = _index_equity(index, start, end)
+            continue
+        _require_columns(index, ["date", "open", "close"], "index")
+        index = index[["date", "open", "close"]].copy()
+        index["code"] = "000001"
+        index = _normalise_keys(index)
+        index[["open", "close"]] = index[["open", "close"]].apply(pd.to_numeric, errors="coerce")
+        selected = pd.DataFrame({"date": signals, "code": "000001", "cohort_size": 1})
+        trades = resolve_trade_window(
+            selected, index, market_dates=market_dates, horizon=HORIZON, evaluation_end=end,
+        )
+        curves[name] = simulate_cohort_portfolio(
+            trades, index, market_dates=market_dates, cost_multiplier=1.0, cohort_days=COHORT_DAYS,
+        )["daily"]
     available = [curves[name].set_index("date")["equity"].rename(name) for name in ("csi1000", "csi2000")]
     mix = pd.concat(available, axis=1).dropna()
     if len(mix) < 2:
         raise ValueError("CSI 1000/2000 do not overlap for the mixed benchmark")
-    mix_equity = (mix / mix.iloc[0]).mean(axis=1)
+    mix_equity = mix.mean(axis=1)
     mix_returns = mix_equity.pct_change().fillna(mix_equity.iloc[0] - 1.0)
     curves["csi_mix_50_50"] = pd.DataFrame({"date": mix.index, "equity": mix_equity.values, "daily_return": mix_returns.values})
     return curves
@@ -619,7 +658,8 @@ def _period_rows(strategy: pd.DataFrame, benchmark: pd.DataFrame) -> list[dict[s
     for name, (start, end) in PERIODS.items():
         subset_s = strategy.loc[strategy["date"].between(start, end)]
         subset_b = benchmark.loc[benchmark["date"].between(start, end)]
-        if len(subset_s) < 2 or len(subset_b) < 2:
+        required_dates = 1 if "daily_return" in subset_s and "daily_return" in subset_b else 2
+        if subset_s["date"].isin(subset_b["date"]).sum() < required_dates:
             rows.append({"period": name, "dates": 0, "excess_return": None, "annualized_excess": None})
             continue
         metrics = _curve_metrics(subset_s, subset_b)
@@ -748,6 +788,8 @@ def _build_signal_trades(
     top_k: int | None = None,
     exclusion_fraction: float = 0.10,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if mode == "c_track":
+        return select_bottom_exclusion(predictions, panel, exclusion_fraction=exclusion_fraction)
     prediction_keys = _normalise_keys(predictions)[["date", "code", "prediction"]]
     joined = prediction_keys.merge(
         panel[["date", "code", "universe_b2", "y_excess20", "adv20", "float_mcap"]],
@@ -756,8 +798,6 @@ def _build_signal_trades(
     joined = joined.loc[joined["universe_b2"].fillna(False)].copy()
     if joined.empty:
         raise ValueError("signal predictions have no B2 rows")
-    if mode == "c_track":
-        return _partition_bottom_exclusion(joined, exclusion_fraction=exclusion_fraction)
     selected_parts: list[pd.DataFrame] = []
     excluded_parts: list[pd.DataFrame] = []
     for date, day in joined.groupby("date", sort=True):
@@ -884,7 +924,8 @@ def run_acceptance(
     start = min(neutral_trades["entry_date"].dropna().min(), baseline_trades["entry_date"].dropna().min())
     end = max(neutral_trades["exit_date"].dropna().max(), baseline_trades["exit_date"].dropna().max())
     opportunity_curves = compute_index_benchmarks(
-        {"csi1000": c1000_path, "csi2000": c2000_path}, start=start, end=end
+        {"csi1000": c1000_path, "csi2000": c2000_path}, start=start, end=end,
+        signal_dates=inputs["neutral_predictions"]["date"].unique(), market_dates=market_dates,
     )
     if sse_path is not None:
         sse = pd.read_csv(_path(sse_path), encoding="utf-8-sig")

@@ -195,3 +195,104 @@ def test_invalid_inputs_fail_fast(tmp_path):
     pd.DataFrame({"date": ["2024-01-01"], "close": [1.0]}).to_csv(malformed, index=False)
     with pytest.raises(ValueError, match="missing columns"):
         compute_index_benchmarks({"csi1000": malformed}, start=pd.Timestamp("2024-01-01"), end=pd.Timestamp("2024-01-02"))
+
+
+def test_fixed_budget_charges_exactly_one_fee_per_side():
+    panel = _panel(dates=3, codes=1)
+    panel[["open", "close"]] = 10.0
+    dates = pd.DatetimeIndex(panel["date"])
+    selected = panel.iloc[:1][["date", "code"]].assign(cohort_size=1)
+    trades = resolve_trade_window(selected, panel, horizon=1)
+    result = simulate_cohort_portfolio(trades, panel, cohort_days=1)
+    expected = (1.0 - result["side_cost"]) / (1.0 + result["side_cost"])
+    assert result["daily"]["equity"].iloc[-1] == pytest.approx(expected)
+    assert result["daily"]["daily_return"].iloc[0] == pytest.approx(expected - 1.0)
+    assert result["trades"]["buy_cash"].iloc[0] == pytest.approx(1.0)
+    assert result["total_buy_notional"] == pytest.approx(1.0 / (1.0 + result["side_cost"]))
+    assert result["annualized_return"] == pytest.approx(expected ** 252 - 1.0)
+
+
+def test_curve_metrics_includes_first_day_and_first_day_drawdown():
+    dates = pd.bdate_range("2024-10-23", periods=2)
+    strategy = pd.DataFrame({"date": dates, "equity": [0.9, 0.9], "daily_return": [-0.1, 0.0]})
+    benchmark = pd.DataFrame({"date": dates, "equity": [1.0, 1.0], "daily_return": [0.0, 0.0]})
+    metrics = _curve_metrics(strategy, benchmark)
+    assert metrics["strategy_return"] == pytest.approx(-0.1)
+    assert metrics["relative_max_drawdown"] == pytest.approx(0.1)
+    assert metrics["strategy_annualized_return"] == pytest.approx(0.9 ** 126 - 1.0)
+
+
+def test_period_metrics_include_return_on_first_day_of_subset():
+    from bridge.c_track_acceptance import _period_rows
+
+    dates = pd.to_datetime(["2024-12-31", "2025-01-02", "2025-01-03"])
+    strategy = pd.DataFrame({"date": dates, "equity": [1.0, 1.1, 1.1], "daily_return": [0.0, 0.1, 0.0]})
+    benchmark = pd.DataFrame({"date": dates, "equity": [1.0, 1.0, 1.0], "daily_return": [0.0, 0.0, 0.0]})
+    rows = {row["period"]: row for row in _period_rows(strategy, benchmark)}
+    assert rows["2025H1"]["excess_return"] == pytest.approx(0.1)
+
+
+def test_mixed_benchmark_keeps_first_day_open_to_close_return(tmp_path):
+    dates = pd.bdate_range("2024-10-23", periods=2)
+    paths = {}
+    for name, close in (("csi1000", 110.0), ("csi2000", 120.0)):
+        paths[name] = tmp_path / f"{name}.csv"
+        pd.DataFrame({"date": dates, "open": [100.0, close], "close": [close, close]}).to_csv(paths[name], index=False)
+    mixed = compute_index_benchmarks(paths, start=dates[0], end=dates[-1])["csi_mix_50_50"]
+    assert mixed["equity"].iloc[0] == pytest.approx(1.15)
+    assert mixed["daily_return"].iloc[0] == pytest.approx(0.15)
+
+
+def test_delayed_entry_past_plan_is_rejected_even_when_exit_also_delays():
+    panel = _panel(dates=5, codes=1)
+    dates = pd.DatetimeIndex(panel["date"])
+    selected = panel.iloc[:1][["date", "code"]]
+    panel = panel.loc[~panel["date"].isin(dates[1:3])]
+    row = resolve_trade_window(selected, panel, market_dates=dates, horizon=2).iloc[0]
+    assert row["entry_status"] == "entry_after_exit"
+    assert pd.isna(row["exit_date"])
+
+
+def test_external_calendar_can_exclude_extra_price_rows():
+    panel = _panel(dates=5, codes=1)
+    dates = pd.DatetimeIndex(panel["date"])
+    selected = panel.iloc[:1][["date", "code"]]
+    row = resolve_trade_window(selected, panel, market_dates=dates[:4], horizon=2).iloc[0]
+    assert row["exit_date"] == dates[2]
+
+
+def test_live_bottom_exclusion_does_not_require_forward_labels():
+    panel = _panel(dates=1, codes=10)[["date", "code", "universe_b2"]]
+    predictions = panel[["date", "code"]].assign(prediction=np.arange(10))
+    selected, excluded = select_bottom_exclusion(predictions, panel)
+    assert len(selected) == 9
+    assert excluded["code"].tolist() == ["000001"]
+
+
+def test_unresolved_names_keep_their_capital_without_cohort_size():
+    panel = _panel(dates=4, codes=2)
+    panel[["open", "close"]] = 10.0
+    dates = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    trades = pd.DataFrame({
+        "signal_date": [dates[0], dates[0]], "code": ["000001", "000002"],
+        "entry_date": [dates[1], pd.NaT], "exit_date": [dates[2], pd.NaT],
+        "entry_open": [10.0, np.nan], "exit_close": [10.0, np.nan],
+    })
+    result = simulate_cohort_portfolio(trades, panel, cohort_days=1, cost_multiplier=0.0)
+    assert result["daily"]["cash"].iloc[0] == pytest.approx(0.5)
+
+
+def test_opportunity_indices_use_the_same_cohorts_and_costs(tmp_path):
+    dates = pd.bdate_range("2024-10-21", periods=22)
+    paths = {}
+    for name in ("csi1000", "csi2000"):
+        paths[name] = tmp_path / f"{name}.csv"
+        pd.DataFrame({"date": dates, "open": 100.0, "close": 100.0}).to_csv(paths[name], index=False)
+    curves = compute_index_benchmarks(
+        paths, start=dates[1], end=dates[20], signal_dates=dates[:1], market_dates=dates,
+    )
+    expected = 0.95 + 0.05 * (1.0 - 0.002) / (1.0 + 0.002)
+    for name in ("csi1000", "csi2000", "csi_mix_50_50"):
+        assert curves[name]["equity"].iloc[-1] == pytest.approx(expected)
+    assert curves["csi1000"]["cash"].iloc[0] == pytest.approx(0.95)
+    assert curves["csi1000"]["active_positions"].iloc[-1] == 0
