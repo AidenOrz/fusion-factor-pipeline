@@ -30,10 +30,10 @@ def bs_code(code: str) -> str:
     return ("sh." if code.startswith("6") else "sz.") + code
 
 
-def fetch_one(bs, code: str) -> list[list[str]]:
+def fetch_one(bs, code: str, start: str = START, end: str = END) -> list[list[str]]:
     rs = bs.query_history_k_data_plus(
         bs_code(code), FIELDS,
-        start_date=START, end_date=END,
+        start_date=start, end_date=end,
         frequency="d", adjustflag="3",
     )
     rows = []
@@ -53,6 +53,14 @@ def main():
     ap.add_argument("--resume", action="store_true", help="追加模式：跳过已存在代码")
     ap.add_argument("--market-all", action="store_true", help="用 query_all_stock 拉全市场（含创业板/科创）")
     ap.add_argument("--out", type=str, default=str(OUT), help="输出 parquet 路径")
+    ap.add_argument("--start", type=str, default=START, help="拉取起始日期（默认 %s）" % START)
+    ap.add_argument("--end", type=str, default=END, help="拉取结束日期（默认 %s）" % END)
+    ap.add_argument(
+        "--codes-from",
+        type=str,
+        default=None,
+        help="从既有 parquet 的 code 列取代码清单（同口径延伸用），优先于面板代码清单",
+    )
     args = ap.parse_args()
 
     validate_startup_or_exit(("v6",))
@@ -63,7 +71,11 @@ def main():
         print("login failed:", lg.error_msg)
         return
     try:
-        if args.market_all:
+        if args.codes_from:
+            seed = pd.read_parquet(args.codes_from, columns=["code"])
+            codes = list(seed["code"].astype(str).str.zfill(6).unique())
+            print(f"代码清单来自 {args.codes_from}: {len(codes)} 只")
+        elif args.market_all:
             rs = bs.query_all_stock(day="2025-12-31")
             codes = []
             while rs.error_code == "0" and rs.next():
@@ -81,10 +93,15 @@ def main():
         done = set()
         OUTX = Path(args.out)
         if args.resume and OUTX.exists():
-            old = pd.read_parquet(OUTX, columns=["code"])
-            done = set(old["code"].astype(str))
+            # 增量语义：只跳过"已在 [start, end] 窗口内取到数据"的代码。
+            # 旧实现的"代码只要出现过就跳过"在延伸窗口时会跳过全部代码。
+            old = pd.read_parquet(OUTX, columns=["code", "date"])
+            old["code"] = old["code"].astype(str).str.zfill(6)
+            old["date"] = pd.to_datetime(old["date"], errors="coerce")
+            covered = old.loc[old["date"] >= pd.Timestamp(args.start), "code"]
+            done = set(covered)
             codes = [c for c in codes if c not in done]
-            print(f"续传: 已有 {len(done)} 只, 剩余 {len(codes)} 只")
+            print(f"续传({args.start}~{args.end}): 窗口内已有 {len(done)} 只, 剩余 {len(codes)} 只")
         if args.sample:
             rng = np.random.RandomState(42)
             codes = rng.choice(codes, size=min(args.sample, len(codes)), replace=False).tolist()
@@ -105,7 +122,7 @@ def main():
                 if lg.error_code != "0":
                     print(f"  重新登录失败: {lg.error_msg}"); break
                 print(f"  [{i}] 已重新登录")
-            rows = fetch_one(bs, code)
+            rows = fetch_one(bs, code, args.start, args.end)
             for r in rows:
                 all_rows.append([code, *r])
             if (i + 1) % 50 == 0:

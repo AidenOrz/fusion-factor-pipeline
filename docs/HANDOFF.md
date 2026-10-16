@@ -26,8 +26,16 @@
 
 - [ ] **影子前向观察未启动**（最大缺口）：前置依赖——面板数据止于 2025-12-31，需刷新至当前；干净前向窗口（2026-07-18 起）已在流逝。
   - **2026-10-17 实测数据地平线（关键，阻塞 D-4）**：上游 v6 面板 `a-share-factor-engine-v6/artifacts/panel/panel.parquet`（1,968,826 行 / 3,178 只 / 629 天）**止于 2025-12-31**，与本地 `panel_fusion_full_market.parquet` 完全一致。`bridge/panel.py` 的日线源是**该上游面板**，不是 baostock，因此**上游不推进则全市场面板无法重物化**。本地 K 线归档（`A_SHARE_KLINE_DATA_ROOT`，3,200 个 csv）全局最大日期 **2026-07-24**（3,199 只 ≥ 2026-07-01，3,191 只 ≥ 2026-07-18）。baostock 会话实测**在线且已到 2026-10-16**（`sh.600000` 探针 28 个交易日命中至 2026-10-16）。**结论：面板刷新不是本项目内可独立完成的步骤，必须先由上游 v6 重建 panel.parquet 至 2026-07-24 及以后。**
+  - **2026-10-17 根治性证据：这不是"上游偷懒"，而是上游治理规则明确禁止**。直接执行上游 CLI 被拒：
+    `python run.py build-panel --analysis-end 2026-07-24` → `ValueError: build-panel only accepts the development split 2023-06-01..2025-12-31`（`v6/src/.../cli.py:194`）。
+    上游 `v6/config/data_splits.yaml` 把 `development` 硬钉在 2023-06-01..2025-12-31，`consumed_regression` = 2026-01-01..2026-07-17（仅 `engineering_regression_only`，禁止 rescan/candidate_comparison/parameter_variation/strategy_optimization），`final_test` 状态 `awaiting_candidate`、`start: null`。`v6/src/.../governance.py:81-94` 对以上每一条做启动期断言，**改窗口即抛错**。`v6/config/universe.yaml` 另设 `oos_start: 2026-01-01`，`scan` 命令遇到 ≥ 该日期的面板行会抛 `"Research panel contains locked OOS dates"`（`cli.py:233`）。
+    **含义**：把 v6 面板延伸到 2026 需要修改上游治理常量，等于**主动破坏上游的数据预算锁**，不是本项目可以擅自做的动作；即使绕过断言，产出的面板也会被上游自身视为 locked OOS。另外上游 `artifacts/live/\*` 已有 2026-07-31 起的逐日信号记录，说明**前向数据在上游是"逐日 live 记录"形态，而非"重算历史面板"形态**。
+    **建议**：影子前向观察应对齐上游语义——逐日记录，不重算 2026 面板；若确需重算，须由上游先正式修改 `data_splits.yaml` 并承担数据预算后果。
 - [ ] 行业历史 PIT：用户已确认数据可得（2026-09），未集成、未验证纯度、未做敏感性实验。
-  - **2026-10-17 实测（阻塞 D-5）**：本地 `data/refdata/industry_snapshot.parquet` **仅 2 行**（000001/600519），`pit_note=snapshot_not_historical`、`update_date=2026-08-10`，是演示数据。`bridge/refdata.py` 文件头已自陈：三个免费源（baostock `query_stock_industry`、WeStock profile/balance）**均无历史行业分类**，只能给出带 `updateDate` 的当前快照。**故纯度为"未经测量的假设"，D-5 无法在无用户提供数据源的情况下进行**；需要用户给出真实历史行业 PIT 文件的位置与格式。
+  - **2026-10-17 实测（阻塞 D-5；纯度已直接测量，结论：非 PIT）**：本地 `data/refdata/industry_snapshot.parquet` **仅 2 行**（000001/600519），`pit_note=snapshot_not_historical`、`update_date=2026-08-10`，是演示数据。`bridge/refdata.py` 文件头已自陈：三个免费源（baostock `query_stock_industry`、WeStock profile/balance）**均无历史行业分类**，只能给出带 `updateDate` 的当前快照。
+    **对冻结面板的量测（决定性）**：`panel_fusion_full_market.parquet` 的 `industry` 在 **629 个交易日里对全部 3,178 只股票零变化**（每只股票的不同行业数 max = 1），31 个行业、零缺失。其上游 `honest_backtest/data/stock_sector_map.csv`（3,194 行，仅 `code,industry` 两列）**没有任何日期列**。即：**冻结面板的行业是静态快照，不是 PIT**，且这个"非 PIT"是在当前冻结结果中**实际生效的**，不是潜在风险。
+    **两个源甚至不可比**：demo 快照用证监会门类代码（`J66金融业`、`C15酒饮料和精制茶制造业`），v6 用短名（`银行`、`食品饮料`）；两只重叠股票**冲突率 2/2**，属分类体系不同而非数据错误。
+    **含义**：D-5 要验证的"纯度"已经可以给出否定结论——当前行业字段是快照口径。要做行业 PIT 需**用户提供真实历史行业分类数据**（含生效日），且需同时解决分类体系对齐；在此之前 `industry_code`/`industry` 的一切行业中性化与行业暴露披露都应按"快照口径"标注，**不得声称 PIT**。
 - [ ] 冻结评分器可重建/预测等价校验：未做（影子观察前置）。
 - [ ] 行业快照敏感性、horizon 敏感性：稳健性三件套欠两项（40 日已声明只作敏感性不改标签）。
 - [x] 工作区卫生（裁决记录部分，已完成）：裁决 xlsx（`docs/DIRECTION_ADJUDICATION_ABC_2026-08-27*.xlsx`）、`docs/DIRECTION_ADJUDICATION_2026-08-22.md` 已由提交 `afd2afb` 纳入版本库，工作区干净。剩余：根目录 `_s1_mc_fetch.py` 一次性探针待归档或删除（建议保留至 D-3b 完成，它是市值面板延伸的唯一入口）。
@@ -46,6 +54,14 @@
    - **2026-10-17 已完成（D-3a 收口，已验证）**：股本 PIT 从 49,965 行 → **56,372 行**，覆盖 3,194 只，新增 2026-03-31 / 2026-06-30 两期，各覆盖 **3,193 只**（3,194 中仅 1 只缺）。质量校验全通过：`(code,stat_date)` 零重复、`pub_date ≥ stat_date` 零违例、2026 行零空 pub_date、`pub_date` 延伸到 **2026-10-16**。
    - **过程教训（重要）**：首次运行 `logout failed!` 会话中途掉线，只拉完**前 122 只**（全部 00 前缀）。若只看行数会误判为"2026 已披露数据少"；对缺口 `000544/000545/000546` 单点复查上游**均有数据**，才证实是取数中断。已 `--resume` 续跑补全。**以后该脚本中断后必须核对"每期代码覆盖数"而非行数**；脚本按 `(code,stat_date)` 跳过已有键，故续跑安全幂等。
 4. 全市场面板重物化至当前：`panel_fusion_full_market.parquet` 同 schema 延伸；主键 `(date, code)` 无重复断言必跑。
+   - **2026-10-17 已完成（D-3b 收口，已验证）**：市值面板 `data/s1_mc_panel.parquet` 从 2,928,983 行 → **3,814,262 行**，日期 2023-06-01 → **2026-10-16**（817 个交易日，新增 2026 年 188 个交易日 / 4,729 只 / 885,279 行）。
+     - **同口径验证**：抽取 600000/000001/000002/600519/300750 重算 `float_mcap = close × volume / (turn/100)`，与既有行**逐行相对差 = 0.0**，确认公式口径完全一致。
+     - **质量**：`(date, code)` 零重复、`float_mcap` 零空值零非正；月度中位数 63~69 亿与 2025 下半年 57~64 亿连续，无单位断点；跨年连续性——4,719 只股票 2025-12-31 → 2026 首个交易日收盘价差中位数 1.47%、**无一超过 50%**。
+     - **历史不可变**（关键安全性质）：合并后 2023-06-01~2025-12-31 的 2,928,983 行**逐列完全相同**；`_float_mcap_membership` 复算的历史 B2/B3 成员（1,887,000 行）**逐行相同**。原因：市值排名按 `groupby(date)` 逐日计算，追加新日期不会改变旧日期名次（已单独实验证明）。
+     - **新增能力**：2026 年每个交易日 B2 域新增 3,000 只成员（此前 2026 完全无成员）。
+     - **回滚点**：旧文件保留为 `data/s1_mc_panel.parquet.bak_20261017`（sha256 前缀 `f12c254ce0a50eb3`）。
+     - **工具改动**：`_s1_mc_fetch.py` 新增 `--start/--end/--codes-from`，并把 `--resume` 从"代码出现过就跳过"改为"该代码在目标窗口内已有数据才跳过"（旧语义在延伸窗口时会跳过全部代码，等于无法续跑）。该文件是 git 跟踪的，改动随本提交入库。
+     - **仍受阻（不可本地解决）**：**`panel_fusion_full_market.parquet` 本身无法重物化**——其日线源是上游 v6 面板，见上条治理证据。市值面板已就绪，等上游数据地平线打通后即可直接用于重物化。
 5. 行业 PIT 数据纯度验证：调整生效日个案抽查（已知改行个股的公告日前后）、与现有快照源同日期冲突率、2023 年起覆盖率；结论写入 `docs/DATA_SOURCE_REPORT.md` 更新。**验证不过则行业 PIT 不进入任何生产路径。**
 
 ### 阶段 E：评分器等价校验（阶段 D 后）
@@ -79,7 +95,9 @@ $env:A_SHARE_KLINE_DATA_ROOT        = 'C:\Users\Lenovo\Documents\New project\a-s
 2. 阶段 D-3a（已完成/可续跑）：股本 PIT 2026 年四个季度刷新，命令为
    `python bridge/refdata.py --out-dir data/refdata --years 2026 --codes-file data/refdata/all_codes.txt shares --resume data/refdata/shares_pit.parquet`
    （幂等+断点续传，重复执行安全）。
-3. 阶段 D-3b（前提确认后）：市值面板延伸，`_s1_mc_fetch.py` 支持 `--resume --market-all`，但需先把 `START/END` 常量从 `2023-06-01/2025-12-31` 改为覆盖到目标日期。
+3. 阶段 D-3b（**已完成**，2026-10-17）：市值面板已延伸至 2026-10-16。如需继续延伸到更新日期，命令为
+   `python _s1_mc_fetch.py --codes-from data/s1_mc_panel.parquet --start 2026-10-17 --end <目标日> --batch-size 0 --resume --out artifacts/mc_ext.parquet`
+   然后按 §2 阶段 D 第 4 条同口径合并（历史行必须保持不变后再落盘）。注意该脚本**只在全批结束时落盘一次**，中断即全丢，务必先确认批内代码数可控。
 4. 阶段 D-5：行业 PIT 纯度抽查——**需用户提供真实历史行业 PIT 数据文件位置与格式**；本地仅有 2 行演示快照，无法自行开展。
 
 ## 6. 关键文件索引
