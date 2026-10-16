@@ -1,6 +1,6 @@
 # HANDOFF — 当前稳定点与下一步
 
-> 更新时间：2026-10-16
+> 更新时间：2026-10-17（阶段 D 数据地平线实测；D-4/D-5 前置受限，见 §3）
 > 状态：C 轨经济验收已定案通过（2026-09-05 recast）。此后六周无新实验。下一主目标：**启动只读影子前向观察**；并行项：行业历史 PIT 集成。`production_authorized=false` 维持不变。
 
 ## 1. 最后稳定点（已验证，可直接依赖）
@@ -11,6 +11,7 @@
 - **基准确则（2026-08-28 裁决，两层制）**：机制层硬门槛 = B2 域等权；机会成本层 = 中证 1000/2000 及 50/50 混合（次级判定）；上证 = 纯附录。旧"跑赢上证"门槛已被 `docs/PROJECT.md` §2 决策 1 的取代记录替代。
 - **数据预算**：开发集 2023-06-01~2025-12-31 已消费；2026-01-01~07-17 永久消费（v6 M8）；**干净数据自 2026-07-18 起算**。
 - **工程**：pytest 72 项全绿（含 C 轨端到端合成验收测试）；冻结提交 `d053c6e`；C 轨模拟器缺陷史与修复见 `docs/BUGFIX_REPORT_2026-09-05.md`。
+  - **2026-10-17 复核**：72 项**确认仍全绿**。注意本机直接跑 `pytest tests` 会得到 `44 passed, 28 errors`，28 个全是 setup 阶段 `PermissionError`（栈在 `_pytest/tmpdir.py`、`pytestqt`，无项目源码），根因与绕行命令见 `docs/knowledge/windows_sandbox_0o700_pytest.md`：沙箱下 `mkdir(mode=0o700)`（pytest 临时目录固定用法）生成的 DACL 连创建者都列不出。**这是环境缺陷，非代码回归**；用该知识条目的插件+basetemp 组合可复现 72 passed。
 - **观察锁箱**：`artifacts/dev_lockbox/dev/` active，3 个非空 live 信号日（2026-08），verify 通过。v6 官方锁箱未消费。
 
 ## 2. 关键已批准决策（不得在本轮回退）
@@ -24,10 +25,12 @@
 ## 3. 待办与阻碍
 
 - [ ] **影子前向观察未启动**（最大缺口）：前置依赖——面板数据止于 2025-12-31，需刷新至当前；干净前向窗口（2026-07-18 起）已在流逝。
+  - **2026-10-17 实测数据地平线（关键，阻塞 D-4）**：上游 v6 面板 `a-share-factor-engine-v6/artifacts/panel/panel.parquet`（1,968,826 行 / 3,178 只 / 629 天）**止于 2025-12-31**，与本地 `panel_fusion_full_market.parquet` 完全一致。`bridge/panel.py` 的日线源是**该上游面板**，不是 baostock，因此**上游不推进则全市场面板无法重物化**。本地 K 线归档（`A_SHARE_KLINE_DATA_ROOT`，3,200 个 csv）全局最大日期 **2026-07-24**（3,199 只 ≥ 2026-07-01，3,191 只 ≥ 2026-07-18）。baostock 会话实测**在线且已到 2026-10-16**（`sh.600000` 探针 28 个交易日命中至 2026-10-16）。**结论：面板刷新不是本项目内可独立完成的步骤，必须先由上游 v6 重建 panel.parquet 至 2026-07-24 及以后。**
 - [ ] 行业历史 PIT：用户已确认数据可得（2026-09），未集成、未验证纯度、未做敏感性实验。
+  - **2026-10-17 实测（阻塞 D-5）**：本地 `data/refdata/industry_snapshot.parquet` **仅 2 行**（000001/600519），`pit_note=snapshot_not_historical`、`update_date=2026-08-10`，是演示数据。`bridge/refdata.py` 文件头已自陈：三个免费源（baostock `query_stock_industry`、WeStock profile/balance）**均无历史行业分类**，只能给出带 `updateDate` 的当前快照。**故纯度为"未经测量的假设"，D-5 无法在无用户提供数据源的情况下进行**；需要用户给出真实历史行业 PIT 文件的位置与格式。
 - [ ] 冻结评分器可重建/预测等价校验：未做（影子观察前置）。
 - [ ] 行业快照敏感性、horizon 敏感性：稳健性三件套欠两项（40 日已声明只作敏感性不改标签）。
-- [ ] 工作区卫生：裁决 xlsx（`docs/DIRECTION_ADJUDICATION_ABC_2026-08-27*.xlsx`）、`docs/DIRECTION_ADJUDICATION_2026-08-22.md` 未提交；根目录 `_s1_*.py` 一次性探针待归档或删除。
+- [x] 工作区卫生（裁决记录部分，已完成）：裁决 xlsx（`docs/DIRECTION_ADJUDICATION_ABC_2026-08-27*.xlsx`）、`docs/DIRECTION_ADJUDICATION_2026-08-22.md` 已由提交 `afd2afb` 纳入版本库，工作区干净。剩余：根目录 `_s1_mc_fetch.py` 一次性探针待归档或删除（建议保留至 D-3b 完成，它是市值面板延伸的唯一入口）。
 - [ ] v6 官方锁箱：待影子观察积累后评估，当前不得进入。
 
 ## 4. 整体计划与步骤
@@ -40,6 +43,8 @@
 ### 阶段 D：数据刷新（影子观察前置，本周）
 
 3. baostock 日线、股本 PIT（`data/refdata/shares_pit.parquet` 同口径按 pubDate as-of 延伸）、全市场市值面板（`data/s1_mc_panel.parquet` 同口径）刷新至当前日期。
+   - **2026-10-17 已完成（D-3a 收口，已验证）**：股本 PIT 从 49,965 行 → **56,372 行**，覆盖 3,194 只，新增 2026-03-31 / 2026-06-30 两期，各覆盖 **3,193 只**（3,194 中仅 1 只缺）。质量校验全通过：`(code,stat_date)` 零重复、`pub_date ≥ stat_date` 零违例、2026 行零空 pub_date、`pub_date` 延伸到 **2026-10-16**。
+   - **过程教训（重要）**：首次运行 `logout failed!` 会话中途掉线，只拉完**前 122 只**（全部 00 前缀）。若只看行数会误判为"2026 已披露数据少"；对缺口 `000544/000545/000546` 单点复查上游**均有数据**，才证实是取数中断。已 `--resume` 续跑补全。**以后该脚本中断后必须核对"每期代码覆盖数"而非行数**；脚本按 `(code,stat_date)` 跳过已有键，故续跑安全幂等。
 4. 全市场面板重物化至当前：`panel_fusion_full_market.parquet` 同 schema 延伸；主键 `(date, code)` 无重复断言必跑。
 5. 行业 PIT 数据纯度验证：调整生效日个案抽查（已知改行个股的公告日前后）、与现有快照源同日期冲突率、2023 年起覆盖率；结论写入 `docs/DATA_SOURCE_REPORT.md` 更新。**验证不过则行业 PIT 不进入任何生产路径。**
 
@@ -59,11 +64,23 @@
 11. 通过则评估是否进入 v6 官方锁箱（单次揭盲语义不变）；不通过则回描述阶段，冻结结果归档锁箱。
 12. 知识库沉淀：行业快照→PIT 直接测量结果、C 轨实现缺陷教训（组合语义须合成测试锁定、manifest 必须内嵌 commit）。
 
-## 5. 恢复入口（下一会话可直接执行的三件事）
+## 5. 恢复入口（下一会话可直接执行）
 
-1. 阶段 H 第 1 项：提交裁决记录并清理根目录探针（纯 git 操作，无风险）。
-2. 阶段 D 第 3 项：跑 baostock 数据刷新脚本（先确认 `A_SHARE_KLINE_DATA_ROOT` 等四个环境变量，`python -m bridge.paths` 自检）。
-3. 阶段 D 第 5 项：行业 PIT 纯度抽查（需要用户提供数据文件位置与格式）。
+**环境前置（已验证可用，2026-10-17）**：四个上游变量指向项目同级目录即可，`python -m bridge.paths` 通过：
+```powershell
+$env:A_SHARE_FACTOR_ENGINE_V6_ROOT = 'C:\Users\Lenovo\Documents\New project\a-share-factor-engine-v6'
+$env:AURUMQ_RL_ROOT                 = 'C:\Users\Lenovo\Documents\New project\aurumq-rl'
+$env:QUANTGPT_ROOT                  = 'C:\Users\Lenovo\Documents\New project\QuantGPT'
+$env:A_SHARE_KLINE_DATA_ROOT        = 'C:\Users\Lenovo\Documents\New project\a-share-kline-data'
+```
+每个 pwsh 进程独立，变量不跨会话保留，必须逐次设置。
+
+1. **（需用户决策）打通上游数据地平线**：D-4 全市场面板重物化的硬前置是上游 v6 的 `artifacts/panel/panel.parquet` 重建至 2026-07-24 及以后。这是本项目外的动作，需确认由谁/如何推进，或确认是否接受"面板仍止于 2025-12-31"而把影子观察改为**不依赖新面板的轻量前向记录**。
+2. 阶段 D-3a（已完成/可续跑）：股本 PIT 2026 年四个季度刷新，命令为
+   `python bridge/refdata.py --out-dir data/refdata --years 2026 --codes-file data/refdata/all_codes.txt shares --resume data/refdata/shares_pit.parquet`
+   （幂等+断点续传，重复执行安全）。
+3. 阶段 D-3b（前提确认后）：市值面板延伸，`_s1_mc_fetch.py` 支持 `--resume --market-all`，但需先把 `START/END` 常量从 `2023-06-01/2025-12-31` 改为覆盖到目标日期。
+4. 阶段 D-5：行业 PIT 纯度抽查——**需用户提供真实历史行业 PIT 数据文件位置与格式**；本地仅有 2 行演示快照，无法自行开展。
 
 ## 6. 关键文件索引
 
