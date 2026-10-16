@@ -30,7 +30,15 @@
     `python run.py build-panel --analysis-end 2026-07-24` → `ValueError: build-panel only accepts the development split 2023-06-01..2025-12-31`（`v6/src/.../cli.py:194`）。
     上游 `v6/config/data_splits.yaml` 把 `development` 硬钉在 2023-06-01..2025-12-31，`consumed_regression` = 2026-01-01..2026-07-17（仅 `engineering_regression_only`，禁止 rescan/candidate_comparison/parameter_variation/strategy_optimization），`final_test` 状态 `awaiting_candidate`、`start: null`。`v6/src/.../governance.py:81-94` 对以上每一条做启动期断言，**改窗口即抛错**。`v6/config/universe.yaml` 另设 `oos_start: 2026-01-01`，`scan` 命令遇到 ≥ 该日期的面板行会抛 `"Research panel contains locked OOS dates"`（`cli.py:233`）。
     **含义**：把 v6 面板延伸到 2026 需要修改上游治理常量，等于**主动破坏上游的数据预算锁**，不是本项目可以擅自做的动作；即使绕过断言，产出的面板也会被上游自身视为 locked OOS。另外上游 `artifacts/live/\*` 已有 2026-07-31 起的逐日信号记录，说明**前向数据在上游是"逐日 live 记录"形态，而非"重算历史面板"形态**。
-    **建议**：影子前向观察应对齐上游语义——逐日记录，不重算 2026 面板；若确需重算，须由上游先正式修改 `data_splits.yaml` 并承担数据预算后果。
+    **上游已明确删除该能力**：`--unlock-oos` 曾经存在，但 v6 已**主动移除**——`docs/v6_5_incremental_panel_checkpoint.md:21`「研究 `build-panel` 现在统一使用 `data_splits.yaml` 的 development 边界，**拒绝 2026；旧 `--unlock-oos` 已删除**」；`docs/incremental_panels_v65.md:43` 同述。现行 `python run.py build-panel --help` 参数仅 `--kline-dir/--analysis-end/--output/--limit/--incremental/--rebuild-state`，**无任何解锁开关**。即：这不是"没做"，而是**上游设计上禁止**。
+    **另一条线索（已排查，不构成解法）**：v6 里存在 `panel_recent.metadata.json`（`analysis_end: 2026-07-24`、3,194 只、2,394,957 行），但**对应的 `panel_recent.parquet` 并不存在**；`docs/architecture_review_2026_07_25.md:486-503` 已记录该批 2026 产物「由某个已删除的临时脚本生成，不在受审代码路径内」，且其 2026-07-20 之后 `benchmark_close`/`regime_allows` 100% 为 NaN（`_bench_*.csv` 只到 2026-07-17）。**结论：不可依赖、不可复现，不作为数据源。**
+    **D-4 完整依赖链（本项目内无法自给的部分）**：
+    1. 日线 OHLCV → 本地 K 线 CSV 到 2026-07-24，**可用**（`bridge/data.py::load_kline_panel` 可直接读）；
+    2. v6 派生特征（`ema_*/gmma_*/atr_*/hhv_*/llv_*/position_*/…` 共 100 列里的多数）→ **仅由 v6 `build-panel` 产出，本地无等价实现**；
+    3. `data/aurumq_alpha101_full.parquet`、`data/aurumq_gtja191_full.parquet`（冻结 37 因子的主来源）→ **也止于 2025-12-31**；`bridge/aurumq_factors.py` 可从 OHLCV 重算，但**其输入面板仍指向上游 `panel.parquet`**；
+    4. 基准 `_bench_000300/000985` 到 2026-07-17、C 轨指数 `000852/000915` 到 2026-07-24 → 可用但**不覆盖 2026-10-16**。
+    **结论**：重物化 2026 面板需要重写 v6 派生特征层，等于**在未预注册的情况下自建一套等价特征族**，与「任何对因子/标签/模型的变更 = 新一轮完整预注册」直接冲突。故 D-4 保持阻塞，且**不建议**绕过。
+    **建议**：影子前向观察应对齐上游语义——逐日记录（上游 `artifacts/live/*` 已是此形态），不重算 2026 面板；市值域侧（D-3b）已就绪，仅差"逐日行情进入评分链路"这一环。
 - [ ] 行业历史 PIT：用户已确认数据可得（2026-09），未集成、未验证纯度、未做敏感性实验。
   - **2026-10-17 实测（阻塞 D-5；纯度已直接测量，结论：非 PIT）**：本地 `data/refdata/industry_snapshot.parquet` **仅 2 行**（000001/600519），`pit_note=snapshot_not_historical`、`update_date=2026-08-10`，是演示数据。`bridge/refdata.py` 文件头已自陈：三个免费源（baostock `query_stock_industry`、WeStock profile/balance）**均无历史行业分类**，只能给出带 `updateDate` 的当前快照。
     **对冻结面板的量测（决定性）**：`panel_fusion_full_market.parquet` 的 `industry` 在 **629 个交易日里对全部 3,178 只股票零变化**（每只股票的不同行业数 max = 1），31 个行业、零缺失。其上游 `honest_backtest/data/stock_sector_map.csv`（3,194 行，仅 `code,industry` 两列）**没有任何日期列**。即：**冻结面板的行业是静态快照，不是 PIT**，且这个"非 PIT"是在当前冻结结果中**实际生效的**，不是潜在风险。
@@ -38,7 +46,7 @@
     **含义**：D-5 要验证的"纯度"已经可以给出否定结论——当前行业字段是快照口径。要做行业 PIT 需**用户提供真实历史行业分类数据**（含生效日），且需同时解决分类体系对齐；在此之前 `industry_code`/`industry` 的一切行业中性化与行业暴露披露都应按"快照口径"标注，**不得声称 PIT**。
 - [ ] 冻结评分器可重建/预测等价校验：未做（影子观察前置）。
 - [ ] 行业快照敏感性、horizon 敏感性：稳健性三件套欠两项（40 日已声明只作敏感性不改标签）。
-- [x] 工作区卫生（裁决记录部分，已完成）：裁决 xlsx（`docs/DIRECTION_ADJUDICATION_ABC_2026-08-27*.xlsx`）、`docs/DIRECTION_ADJUDICATION_2026-08-22.md` 已由提交 `afd2afb` 纳入版本库，工作区干净。剩余：根目录 `_s1_mc_fetch.py` 一次性探针待归档或删除（建议保留至 D-3b 完成，它是市值面板延伸的唯一入口）。
+- [x] 工作区卫生（已完成）：裁决 xlsx（`docs/DIRECTION_ADJUDICATION_ABC_2026-08-27*.xlsx`）、`docs/DIRECTION_ADJUDICATION_2026-08-22.md` 已由提交 `afd2afb` 纳入版本库。根目录 `_s1_mc_fetch.py` **经核查是 git 跟踪文件（非临时探针），且是市值面板延伸的唯一入口**，故**保留不删**；2026-10-17 已为其补 `--start/--end/--codes-from` 并修正 `--resume` 语义。
 - [ ] v6 官方锁箱：待影子观察积累后评估，当前不得进入。
 
 ## 4. 整体计划与步骤
