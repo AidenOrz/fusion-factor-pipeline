@@ -32,12 +32,17 @@
     **含义**：把 v6 面板延伸到 2026 需要修改上游治理常量，等于**主动破坏上游的数据预算锁**，不是本项目可以擅自做的动作；即使绕过断言，产出的面板也会被上游自身视为 locked OOS。另外上游 `artifacts/live/\*` 已有 2026-07-31 起的逐日信号记录，说明**前向数据在上游是"逐日 live 记录"形态，而非"重算历史面板"形态**。
     **上游已明确删除该能力**：`--unlock-oos` 曾经存在，但 v6 已**主动移除**——`docs/v6_5_incremental_panel_checkpoint.md:21`「研究 `build-panel` 现在统一使用 `data_splits.yaml` 的 development 边界，**拒绝 2026；旧 `--unlock-oos` 已删除**」；`docs/incremental_panels_v65.md:43` 同述。现行 `python run.py build-panel --help` 参数仅 `--kline-dir/--analysis-end/--output/--limit/--incremental/--rebuild-state`，**无任何解锁开关**。即：这不是"没做"，而是**上游设计上禁止**。
     **另一条线索（已排查，不构成解法）**：v6 里存在 `panel_recent.metadata.json`（`analysis_end: 2026-07-24`、3,194 只、2,394,957 行），但**对应的 `panel_recent.parquet` 并不存在**；`docs/architecture_review_2026_07_25.md:486-503` 已记录该批 2026 产物「由某个已删除的临时脚本生成，不在受审代码路径内」，且其 2026-07-20 之后 `benchmark_close`/`regime_allows` 100% 为 NaN（`_bench_*.csv` 只到 2026-07-17）。**结论：不可依赖、不可复现，不作为数据源。**
-    **D-4 完整依赖链（本项目内无法自给的部分）**：
-    1. 日线 OHLCV → 本地 K 线 CSV 到 2026-07-24，**可用**（`bridge/data.py::load_kline_panel` 可直接读）；
-    2. v6 派生特征（`ema_*/gmma_*/atr_*/hhv_*/llv_*/position_*/…` 共 100 列里的多数）→ **仅由 v6 `build-panel` 产出，本地无等价实现**；
-    3. `data/aurumq_alpha101_full.parquet`、`data/aurumq_gtja191_full.parquet`（冻结 37 因子的主来源）→ **也止于 2025-12-31**；`bridge/aurumq_factors.py` 可从 OHLCV 重算，但**其输入面板仍指向上游 `panel.parquet`**；
-    4. 基准 `_bench_000300/000985` 到 2026-07-17、C 轨指数 `000852/000915` 到 2026-07-24 → 可用但**不覆盖 2026-10-16**。
-    **结论**：重物化 2026 面板需要重写 v6 派生特征层，等于**在未预注册的情况下自建一套等价特征族**，与「任何对因子/标签/模型的变更 = 新一轮完整预注册」直接冲突。故 D-4 保持阻塞，且**不建议**绕过。
+    **D-4 依赖链（2026-10-17 实测后修正，重要）**：我先前的"v6 派生特征本地无等价实现"判断**经实测被推翻**，记录如下以免误导后续：
+    1. **日线 OHLCV：本地 K 线 CSV 与 v6 面板逐列逐行完全一致**。对 `open/high/low/close/amount/volume` 六列做全量比对（1,968,826 行），**max abs diff = 0**，行数与代码数也完全相等（3,178 只）。`bridge/data.py::load_kline_panel` 可直接读，且本地已到 **2026-07-24**。
+    2. **本地 CSV 能 1:1 复现冻结因子（已验证）**：
+       - `_polars_frame` 的输入分别由 *v6 面板* 与 *本地 CSV 重建的面板* 生成，24 列**逐值相同**（20 个数值列 0 差异、industry/sub_industry 0 不一致、键集合相同）。
+       - 受控同进程比对（全量 1,968,826 行）：**本地重算 vs 已存 `aurumq_alpha101_full.parquet`，106/106 列完全一致（0 差异）**；**v6 面板重算 vs 已存，106/106 一致**；**本地 vs v6 重算，106/106 一致**；进程内重复计算同一输入，**0/106 差异**（确定性成立）。
+       - 冻结清单 28 个 alpha101 特征单独比对同样 **0/28 差异**。
+       - **诚实标注**：过程中有一次**跨进程**比对（非受控）曾显示 33/96 列有差异，**未能复现**，怀疑是该次比对脚本的列对齐/上下文问题。**结论以受控同进程比对为准**，但保留该不确定性提示，后续若以本地 CSV 重建因子应重跑一次全量等价校验。
+       - 结论：`data/aurumq_alpha101_full.parquet` 可由本地 CSV 精确重建，**不依赖 v6 `build-panel`**。
+    3. 其余 9 个特征：`manual__alpha004/055/059` 的底层就是 alpha101 列（步骤 2 已覆盖）；`alpha_qg_range_15`、`alpha_qg_corr_pv_10`、`alpha_qg_f001/f005/f006/f008` 由**本项目自己的表达式引擎**（`bridge/panel.py` + `config/expressions*.json`）基于日线计算，其表达式 token 只用到 `close/high/low/vol/vwap/amount/volume/returns`——**同样不依赖 v6 派生列**（`ema_*/gmma_*/atr_*` 等 100 列里的多数**并不在冻结 37 因子的依赖范围内**）。这 9 项尚未做等价性实测，但依赖面已明确。
+    4. **真正的剩余缺口是基准与标签，不是特征**：`_bench_000300/000985` 只到 **2026-07-17**、C 轨指数 `000852/000915` 到 2026-07-24。标签 `y_excess20/y_neutral_rank20_*` 需要 `benchmark_open/benchmark_close`；且 20 日标签本身要求"未来 20 个交易日"，**在数据地平线处天然无法生成**（属于前瞻标签的固有边界，不是缺陷）。
+    **修正后的结论**：D-4 的"特征层"**在本项目内可自给**（已实测），**并非必须先由上游重建**。阻塞点收缩为：(a) 上游 OOS 锁使 v6 `panel.parquet` 无法延伸（治理事实，见上）；(b) 基准 CSV 只到 2026-07-17；(c) 本地 K 线止于 2026-07-24，故**干净前向窗口实际只有 2026-07-20~07-24 共 5 个交易日**。    **但**：**影子前向观察不需要标签**（只需特征→评分→记录），因此这 5 天在原则上是可用的；若要从上游 `baostock` 续取到 2026-10-16，需同时补基准。**下一步（未开工）**：以本地 CSV 为源、按 v6 schema 物化 2026-07-18~07-24 的日线面板，跑 `(date,code)` 唯一性断言，再用 `bridge/panel.py` 生成冻结 37 特征并做与 evaluation 期一致的评分等价校验（对应阶段 E）。
     **建议**：影子前向观察应对齐上游语义——逐日记录（上游 `artifacts/live/*` 已是此形态），不重算 2026 面板；市值域侧（D-3b）已就绪，仅差"逐日行情进入评分链路"这一环。
 - [ ] 行业历史 PIT：用户已确认数据可得（2026-09），未集成、未验证纯度、未做敏感性实验。
   - **2026-10-17 实测（阻塞 D-5；纯度已直接测量，结论：非 PIT）**：本地 `data/refdata/industry_snapshot.parquet` **仅 2 行**（000001/600519），`pit_note=snapshot_not_historical`、`update_date=2026-08-10`，是演示数据。`bridge/refdata.py` 文件头已自陈：三个免费源（baostock `query_stock_industry`、WeStock profile/balance）**均无历史行业分类**，只能给出带 `updateDate` 的当前快照。
