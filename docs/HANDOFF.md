@@ -1,6 +1,6 @@
 # HANDOFF — 当前稳定点与下一步
 
-> 更新时间：2026-10-17（阶段 D 数据地平线实测；D-4/D-5 前置受限，见 §3）
+> 更新时间：2026-10-17（**阶段 D 已完成**：数据刷新至 2026-10-16，面板重物化并通过主键断言，行业 PIT 判为快照口径；见 §3/§4）
 > 状态：C 轨经济验收已定案通过（2026-09-05 recast）。此后六周无新实验。下一主目标：**启动只读影子前向观察**；并行项：行业历史 PIT 集成。`production_authorized=false` 维持不变。
 
 ## 1. 最后稳定点（已验证，可直接依赖）
@@ -24,8 +24,8 @@
 
 ## 3. 待办与阻碍
 
-- [ ] **影子前向观察未启动**（最大缺口）：**数据侧前置已于 2026-10-17 全部解除**——股本 PIT 与市值面板已刷新、全市场面板已重物化并通过 `(date,code)` 断言（见下与 §4 阶段 D）。当前仅差"向前观察协议预注册 + 启动"本身（§4 阶段 F 第 7-8 项）。干净前向窗口（2026-07-18 起）仍在流逝：面板现覆盖 **2026-07-20~07-24 共 5 个交易日**。
-  - **2026-10-17 实测数据地平线（关键，阻塞 D-4）**：上游 v6 面板 `a-share-factor-engine-v6/artifacts/panel/panel.parquet`（1,968,826 行 / 3,178 只 / 629 天）**止于 2025-12-31**，与本地 `panel_fusion_full_market.parquet` 完全一致。`bridge/panel.py` 的日线源是**该上游面板**，不是 baostock，因此**上游不推进则全市场面板无法重物化**。本地 K 线归档（`A_SHARE_KLINE_DATA_ROOT`，3,200 个 csv）全局最大日期 **2026-07-24**（3,199 只 ≥ 2026-07-01，3,191 只 ≥ 2026-07-18）。baostock 会话实测**在线且已到 2026-10-16**（`sh.600000` 探针 28 个交易日命中至 2026-10-16）。**结论：面板刷新不是本项目内可独立完成的步骤，必须先由上游 v6 重建 panel.parquet 至 2026-07-24 及以后。**
+- [ ] **影子前向观察未启动**（最大缺口）：**数据侧前置已于 2026-10-17 全部解除**——股本 PIT 与市值面板已刷新、全市场面板已重物化并通过 `(date,code)` 断言（见下与 §4 阶段 D）。当前仅差"向前观察协议预注册 + 启动"本身（§4 阶段 F 第 7-8 项）。干净前向窗口（2026-07-18 起）仍在流逝：面板现覆盖 **2026-07-20~2026-10-16 共 59 个交易日**（B2 域 95,285 行）。
+  - **2026-10-17 实测数据地平线（历史记录；D-4 已通过本地重建解除，见 §4）**：上游 v6 面板 `a-share-factor-engine-v6/artifacts/panel/panel.parquet`（1,968,826 行 / 3,178 只 / 629 天）**止于 2025-12-31**，与本地 `panel_fusion_full_market.parquet` 完全一致。`bridge/panel.py` 的日线源是**该上游面板**，不是 baostock，因此**上游不推进则全市场面板无法重物化**。本地 K 线归档（`A_SHARE_KLINE_DATA_ROOT`，3,200 个 csv）全局最大日期 **2026-07-24**（3,199 只 ≥ 2026-07-01，3,191 只 ≥ 2026-07-18）。baostock 会话实测**在线且已到 2026-10-16**（`sh.600000` 探针 28 个交易日命中至 2026-10-16）。**结论：面板刷新不是本项目内可独立完成的步骤，必须先由上游 v6 重建 panel.parquet 至 2026-07-24 及以后。**
   - **2026-10-17 根治性证据：这不是"上游偷懒"，而是上游治理规则明确禁止**。直接执行上游 CLI 被拒：
     `python run.py build-panel --analysis-end 2026-07-24` → `ValueError: build-panel only accepts the development split 2023-06-01..2025-12-31`（`v6/src/.../cli.py:194`）。
     上游 `v6/config/data_splits.yaml` 把 `development` 硬钉在 2023-06-01..2025-12-31，`consumed_regression` = 2026-01-01..2026-07-17（仅 `engineering_regression_only`，禁止 rescan/candidate_comparison/parameter_variation/strategy_optimization），`final_test` 状态 `awaiting_candidate`、`start: null`。`v6/src/.../governance.py:81-94` 对以上每一条做启动期断言，**改窗口即抛错**。`v6/config/universe.yaml` 另设 `oos_start: 2026-01-01`，`scan` 命令遇到 ≥ 该日期的面板行会抛 `"Research panel contains locked OOS dates"`（`cli.py:233`）。
