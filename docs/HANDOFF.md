@@ -24,7 +24,7 @@
 
 ## 3. 待办与阻碍
 
-- [ ] **影子前向观察未启动**（最大缺口）：前置依赖——面板数据止于 2025-12-31，需刷新至当前；干净前向窗口（2026-07-18 起）已在流逝。
+- [ ] **影子前向观察未启动**（最大缺口）：**数据侧前置已于 2026-10-17 全部解除**——股本 PIT 与市值面板已刷新、全市场面板已重物化并通过 `(date,code)` 断言（见下与 §4 阶段 D）。当前仅差"向前观察协议预注册 + 启动"本身（§4 阶段 F 第 7-8 项）。干净前向窗口（2026-07-18 起）仍在流逝：面板现覆盖 **2026-07-20~07-24 共 5 个交易日**。
   - **2026-10-17 实测数据地平线（关键，阻塞 D-4）**：上游 v6 面板 `a-share-factor-engine-v6/artifacts/panel/panel.parquet`（1,968,826 行 / 3,178 只 / 629 天）**止于 2025-12-31**，与本地 `panel_fusion_full_market.parquet` 完全一致。`bridge/panel.py` 的日线源是**该上游面板**，不是 baostock，因此**上游不推进则全市场面板无法重物化**。本地 K 线归档（`A_SHARE_KLINE_DATA_ROOT`，3,200 个 csv）全局最大日期 **2026-07-24**（3,199 只 ≥ 2026-07-01，3,191 只 ≥ 2026-07-18）。baostock 会话实测**在线且已到 2026-10-16**（`sh.600000` 探针 28 个交易日命中至 2026-10-16）。**结论：面板刷新不是本项目内可独立完成的步骤，必须先由上游 v6 重建 panel.parquet 至 2026-07-24 及以后。**
   - **2026-10-17 根治性证据：这不是"上游偷懒"，而是上游治理规则明确禁止**。直接执行上游 CLI 被拒：
     `python run.py build-panel --analysis-end 2026-07-24` → `ValueError: build-panel only accepts the development split 2023-06-01..2025-12-31`（`v6/src/.../cli.py:194`）。
@@ -119,7 +119,8 @@ $env:A_SHARE_KLINE_DATA_ROOT        = 'C:\Users\Lenovo\Documents\New project\a-s
 ```
 每个 pwsh 进程独立，变量不跨会话保留，必须逐次设置。
 
-1. **（需用户决策）打通上游数据地平线**：D-4 全市场面板重物化的硬前置是上游 v6 的 `artifacts/panel/panel.parquet` 重建至 2026-07-24 及以后。这是本项目外的动作，需确认由谁/如何推进，或确认是否接受"面板仍止于 2025-12-31"而把影子观察改为**不依赖新面板的轻量前向记录**。
+1. ~~打通上游数据地平线~~ **（已解决，2026-10-17）**：面板重物化不再依赖上游。用 `bridge/panel_extension.py` 从本地 K 线 CSV 重建日线面板，再经 `bridge/panel.py` 产出融合面板，已到 **2026-07-24**，历史行与旧冻结面板逐列 diff = 0。
+   **下一步（转为阶段 F）**：写影子观察预注册并启动；若要延长观察窗口到 2026-10-16，按 `docs/knowledge/baostock_local_kline_splice.md` 的接缝缩放法延伸（需先补基准 `000985`，baostock 无该代码）。
 2. 阶段 D-3a（已完成/可续跑）：股本 PIT 2026 年四个季度刷新，命令为
    `python bridge/refdata.py --out-dir data/refdata --years 2026 --codes-file data/refdata/all_codes.txt shares --resume data/refdata/shares_pit.parquet`
    （幂等+断点续传，重复执行安全）。
