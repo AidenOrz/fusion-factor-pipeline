@@ -75,7 +75,15 @@
      - **主键断言（D-4 要求的 `(date,code)` 唯一性）**：对现行冻结面板 `panel_fusion_full_market.parquet` 与延伸后的市值面板各跑一次，均 **0 重复**（1,968,826 / 3,814,262 行）。重物化完成后必须对**新面板**再跑一次，本项不代表新面板已通过。
      - **回滚点**：旧文件保留为 `data/s1_mc_panel.parquet.bak_20261017`（sha256 前缀 `f12c254ce0a50eb3`）。
      - **工具改动**：`_s1_mc_fetch.py` 新增 `--start/--end/--codes-from`，并把 `--resume` 从"代码出现过就跳过"改为"该代码在目标窗口内已有数据才跳过"（旧语义在延伸窗口时会跳过全部代码，等于无法续跑）。该文件是 git 跟踪的，改动随本提交入库。
-     - **仍受阻（不可本地解决）**：**`panel_fusion_full_market.parquet` 本身无法重物化**——其日线源是上游 v6 面板，见上条治理证据。市值面板已就绪，等上游数据地平线打通后即可直接用于重物化。
+     - **2026-10-17 已完成（D-4 收口，已验证）——重物化不再需要上游**：先前的"必须等上游 v6 重建 panel.parquet"结论**已被实测推翻并撤回**。做法：用本地 K 线 CSV 重建 v6 schema 的日线面板（`artifacts/build_extension_2026.py`），再喂给 `bridge/panel.py` 产出完整融合面板。
+     - **产物**：`data/panel_fusion_full_market.parquet` 从 1,968,826 行 → **2,394,957 行**，日期 2023-06-01 → **2026-07-24**（763 个交易日，3,194 只）。回滚点 `data/panel_fusion_full_market.parquet.bak_20261017`。
+     - **主键断言（D-4 明确要求，已在最终产物上执行）**：`(date, code)` **重复 = 0**，`panel_scope` 全为 `full_market`。
+     - **历史等价性（决定性证据）**：与旧冻结面板逐行比对 1,968,826 行，**全部 45 个特征/身份列 max abs diff = 0**（OHLCV/amount/volume 均为 0，`industry` 0 不一致，8 个 v6 派生列 `atr_relative/range_relative/vol_ratio/position_ema20/ret_5d/ret_20d/realized_vol_120d_d1/amount_dry_ratio` 亦为 0）。即**旧数据一字未改**。
+     - **唯一差异是标签的 NA 模式，且是修复而非回归**：`stock_ret20/benchmark_ret20/y_excess20/y_*` 在 2025-12-04~12-31 有 63,169 行"旧缺新有"（`frozen_only = 0`，即有值处 **diff = 0**）。旧面板因数据止于 2025-12-31 而在末 20 个交易日无法生成 20 日前瞻标签；新面板能看到后续行情，故正确填充。**这不是冲突**。
+     - **8 个 v6 派生列已证实可本地精确复现**（对 5 只股票 629 天全量比对，max abs diff = 0），公式取自 `v6/src/.../data/panel.py::compute_stock_indicators` 并镜像实现。
+     - **上游 `panel_recent.metadata.json` 的交叉印证**：其记录 `analysis_end=2026-07-24`、`row_count=2394957`、`stock_count=3194`——与本次重建的 **行数与股票数完全一致**，独立佐证重建口径正确。
+     - **仍受限（非阻塞，属固有边界）**：干净前向窗口实际只有 **2026-07-20~07-24 共 5 个交易日**（本地 K 线止于 07-24）；基准 `_bench_000985` 只到 **2026-07-17**（baostock 无该代码，但 `sh.000300`/`sh.000001` 可到 2026-10-16）；20 日标签在数据边缘天然为 NaN。若要延到 2026-10-16，需先补基准与 K 线。
+     - **脚本**：`artifacts/build_extension_2026.py`（本次新增，一次性构建器；排除聚合文件 `all_main_board_kline.csv`，它含 1 行违反 vwap 契约的数据会触发 `bridge/data.py` 断言）。
 5. 行业 PIT 数据纯度验证：调整生效日个案抽查（已知改行个股的公告日前后）、与现有快照源同日期冲突率、2023 年起覆盖率；结论写入 `docs/DATA_SOURCE_REPORT.md` 更新。**验证不过则行业 PIT 不进入任何生产路径。**
 
 ### 阶段 E：评分器等价校验（阶段 D 后）
