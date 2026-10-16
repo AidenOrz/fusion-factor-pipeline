@@ -108,6 +108,15 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--benchmark", default=None, help="benchmark csv for benchmark_open/close")
+    ap.add_argument(
+        "--supplement",
+        default=None,
+        help=(
+            "parquet of post-seam bars in ARCHIVE units (code,date,open,high,low,close,"
+            "volume,amount), already scaled to the archive price basis; appended to each "
+            "stock's history before indicators are computed"
+        ),
+    )
     args = ap.parse_args()
 
     if not args.kline_dir:
@@ -133,6 +142,17 @@ def main() -> int:
             for code, ind in zip(sm[code_col].astype(str).str.zfill(6), sm[ind_col[0]]):
                 industry[code] = ind
 
+    supplement = {}
+    if args.supplement and Path(args.supplement).is_file():
+        sup = pd.read_parquet(args.supplement)
+        sup["date"] = pd.to_datetime(sup["date"], errors="coerce")
+        sup["code"] = sup["code"].astype(str).str.zfill(6)
+        for col in ("open", "high", "low", "close", "volume", "amount"):
+            sup[col] = pd.to_numeric(sup[col], errors="coerce")
+        for code, part in sup.groupby("code", sort=False):
+            supplement[code] = part.sort_values("date")
+        print(f"supplement: {len(sup)} rows across {len(supplement)} codes")
+
     rows: list[pd.DataFrame] = []
     failures: list[str] = []
     for i, path in enumerate(files):
@@ -146,6 +166,12 @@ def main() -> int:
             df["code"] = code
             for col in ("open", "high", "low", "close", "volume", "amount"):
                 df[col] = pd.to_numeric(df[col], errors="coerce")
+            extra = supplement.get(code)
+            if extra is not None:
+                # Append post-seam bars, dropping any overlap so the seam day is not duplicated.
+                extra = extra.loc[extra["date"] > df["date"].max(), df.columns.intersection(extra.columns)]
+                if not extra.empty:
+                    df = pd.concat([df, extra], ignore_index=True).sort_values("date")
             computed = compute_indicators(df)
             window = computed[
                 (computed["date"] >= pd.Timestamp(args.start))

@@ -75,7 +75,15 @@
      - **主键断言（D-4 要求的 `(date,code)` 唯一性）**：对现行冻结面板 `panel_fusion_full_market.parquet` 与延伸后的市值面板各跑一次，均 **0 重复**（1,968,826 / 3,814,262 行）。重物化完成后必须对**新面板**再跑一次，本项不代表新面板已通过。
      - **回滚点**：旧文件保留为 `data/s1_mc_panel.parquet.bak_20261017`（sha256 前缀 `f12c254ce0a50eb3`）。
      - **工具改动**：`_s1_mc_fetch.py` 新增 `--start/--end/--codes-from`，并把 `--resume` 从"代码出现过就跳过"改为"该代码在目标窗口内已有数据才跳过"（旧语义在延伸窗口时会跳过全部代码，等于无法续跑）。该文件是 git 跟踪的，改动随本提交入库。
-     - **2026-10-17 已完成（D-4 收口，已验证）——重物化不再需要上游**：先前的"必须等上游 v6 重建 panel.parquet"结论**已被实测推翻并撤回**。做法：用本地 K 线 CSV 重建 v6 schema 的日线面板（`artifacts/build_extension_2026.py`），再喂给 `bridge/panel.py` 产出完整融合面板。
+     - **2026-10-17 已完成（D-4 收口，已验证）——重物化不再需要上游**：先前的"必须等上游 v6 重建 panel.parquet"结论**已被实测推翻并撤回**。做法：用本地 K 线 CSV 重建 v6 schema 的日线面板（`bridge/panel_extension.py`），再喂给 `bridge/panel.py` 产出完整融合面板。
+     - **2026-10-17 二次收口：已延伸至 2026-10-16（真正"至当前"）**。在 2026-07-24 之后用 baostock 补数据，按**接缝缩放法**对齐价格基准（`k = local_close/bs_adj2_close`，取重叠段最后 10 个交易日的**中位数**；实测各股 `k` 标准差 ≈ 0，确认其恒定）：
+       - `data/panel_fusion_full_market.parquet` 达 **2,537,139 行 / 2023-06-01 → 2026-10-16 / 817 个交易日**；`(date,code)` 零重复、`panel_scope` 全为 `full_market`。
+       - **历史零改动**：与上一版（到 07-24）重叠的 **2,394,957 行、57 个可比列全部 diff = 0**（先验证后落盘，不一致则拒绝推广）。
+       - **接缝连续性**：2,633 只在接缝日的 `|ret|` 中位数 2.46%、p99 10.0%、max 10.26%；相对各股自身历史 `|ret|` p99.9 仅 5 只"越界"，均恰为 **~10% 涨停**（2 位小数舍入），**非拼接伪跳空**。
+       - **前向窗口扩大到 59 个交易日**（2026-07-20 → 2026-10-16），B2 域 95,285 行。
+       - 回滚点：`data/panel_fusion_full_market.parquet.bak_20261017_r2`（另有更早的 `..._20261017` 为 07-24 版）。
+       - 新增数据行：142,182 行 / 2,633 只（baostock 覆盖到的代码；未覆盖的代码在 07-24 后无行，即"该股当日无数据"，符合预期）。
+       - `bridge/panel_extension.py` 已加 `--supplement` 参数（传入已按接缝对齐的接缝后备 parquet），使该延伸可复现。
      - **产物**：`data/panel_fusion_full_market.parquet` 从 1,968,826 行 → **2,394,957 行**，日期 2023-06-01 → **2026-07-24**（763 个交易日，3,194 只）。回滚点 `data/panel_fusion_full_market.parquet.bak_20261017`。
      - **主键断言（D-4 明确要求，已在最终产物上执行）**：`(date, code)` **重复 = 0**，`panel_scope` 全为 `full_market`。
      - **历史等价性（决定性证据）**：与旧冻结面板逐行比对 1,968,826 行，**全部 45 个特征/身份列 max abs diff = 0**（OHLCV/amount/volume 均为 0，`industry` 0 不一致，8 个 v6 派生列 `atr_relative/range_relative/vol_ratio/position_ema20/ret_5d/ret_20d/realized_vol_120d_d1/amount_dry_ratio` 亦为 0）。即**旧数据一字未改**。
