@@ -135,8 +135,8 @@ $env:A_SHARE_KLINE_DATA_ROOT        = 'C:\Users\Lenovo\Documents\New project\a-s
 ```
 每个 pwsh 进程独立，变量不跨会话保留，必须逐次设置。
 
-1. ~~打通上游数据地平线~~ **（已解决，2026-10-17）**：面板重物化不再依赖上游。用 `bridge/panel_extension.py` 从本地 K 线 CSV 重建日线面板，再经 `bridge/panel.py` 产出融合面板，已到 **2026-07-24**，历史行与旧冻结面板逐列 diff = 0。
-   **下一步（转为阶段 F）**：写影子观察预注册并启动；若要延长观察窗口到 2026-10-16，按 `docs/knowledge/baostock_local_kline_splice.md` 的接缝缩放法延伸（需先补基准 `000985`，baostock 无该代码）。
+1. ~~打通上游数据地平线~~ **（已解决，2026-10-17）**：面板重物化不再依赖上游。用 `bridge/panel_extension.py` 从本地 K 线 CSV 重建日线面板，再经 `bridge/panel.py` 产出融合面板，**已到 2026-10-16**（2,537,139 行），历史行与旧冻结面板逐列 diff = 0，`(date,code)` 零重复。延伸段用接缝缩放法接 baostock，见 `docs/knowledge/baostock_local_kline_splice.md`。
+   **下一步（转为阶段 F）**：写影子观察预注册并启动（阶段 F 第 7 项，唯一空白）。
 2. 阶段 D-3a（已完成/可续跑）：股本 PIT 2026 年四个季度刷新，命令为
    `python bridge/refdata.py --out-dir data/refdata --years 2026 --codes-file data/refdata/all_codes.txt shares --resume data/refdata/shares_pit.parquet`
    （幂等+断点续传，重复执行安全）。
@@ -147,9 +147,24 @@ $env:A_SHARE_KLINE_DATA_ROOT        = 'C:\Users\Lenovo\Documents\New project\a-s
 
 ## 6. 关键文件索引
 
+**权威依据**
+- 长期决策：`docs/PROJECT.md`（含基准取代记录）
+- 当前状态与下一步：本文件
+- 域定义：`docs/UNIVERSE_SPEC.md`；上游环境：`docs/UPSTREAM_ENVIRONMENT.md`
+
+**冻结与验收**
 - 冻结配置：`config/factor_pool_b2_frozen_2026-08-28.json`
 - C 轨有效结果：`runs/c_track_acceptance_v2_recast_2026-09-05/`
-- 验收预注册：`docs/C_TRACK_ACCEPTANCE_PREREG_2026-08-28.md`（含两层基准）、`docs/C_TRACK_RECAST_PREREG_2026-09-05.md`
+- 验收预注册：`docs/C_TRACK_ACCEPTANCE_PREREG_2026-08-28.md`、`docs/C_TRACK_RECAST_PREREG_2026-09-05.md`
 - 定案报告：`docs/WORK_REPORT_2026-09-05_C_TRACK_RECAST.md`
-- 裁决记录：`docs/DIRECTION_ADJUDICATION_ABC_2026-08-27_kimi.xlsx`（含最终决定列）
-- 长期决策：`docs/PROJECT.md`；上游环境：`docs/UPSTREAM_ENVIRONMENT.md`
+- 裁决记录：`docs/DIRECTION_ADJUDICATION_ABC_2026-08-27_kimi.xlsx`
+
+**本轮（阶段 D/E/F）新增**
+- 数据事实：`docs/DATA_SOURCE_REPORT.md`（§5.1 含申万 PIT 结论）
+- 行业 PIT：`docs/INDUSTRY_PIT_2026-10-18.md`
+- 前向评分：`docs/FORWARD_SHADOW_2026-10-17.md`
+- 面板重建：`bridge/panel_extension.py`、`docs/knowledge/local_kline_panel_rebuild.md`
+- 数据源拼接：`docs/knowledge/baostock_local_kline_splice.md`
+
+**归档**
+- `docs/archive/README.md`（9 个已被取代的文档，保留作史料，不作当前依据）

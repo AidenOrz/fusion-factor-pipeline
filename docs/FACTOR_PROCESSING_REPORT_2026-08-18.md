@@ -260,7 +260,7 @@ tests/test_dev_lockbox.py::test_duplicate_or_out_of_order_append_rejected
 
 ## 7. 建议的下一步操作
 
-本轮方向清单已形成一个显式人工候选池，实施和第一轮描述性结果见 [MANUAL_FACTOR_POOL_NEXT_STEP_2026-08-18.md](MANUAL_FACTOR_POOL_NEXT_STEP_2026-08-18.md)。该候选池不会自动激活，也没有把 short 建议写回原始表达式配置。
+本轮方向清单已形成一个显式人工候选池，实施和第一轮描述性结果见 [archive/MANUAL_FACTOR_POOL_NEXT_STEP_2026-08-18.md](archive/MANUAL_FACTOR_POOL_NEXT_STEP_2026-08-18.md)。该候选池不会自动激活，也没有把 short 建议写回原始表达式配置。
 
 ### 第一步：人工处理方向报告
 
@@ -301,7 +301,7 @@ python bridge/panel.py `
 
 ## 8. 相关文件
 
-- 方案文档：[TRAINING_PLAN.md](TRAINING_PLAN.md)
+- 方案文档：[archive/TRAINING_PLAN.md](archive/TRAINING_PLAN.md)
 - 方向报告：[direction_review.csv](../runs/factor_selection_v2_direction_review/direction_review.csv)
 - 特征增强计划：[feature_augmentation_plan.json](../runs/factor_selection_v2_direction_review/feature_augmentation_plan.json)
 - 选择清单：[selected_features.json](../runs/factor_selection_v2_direction_review/selected_features.json)

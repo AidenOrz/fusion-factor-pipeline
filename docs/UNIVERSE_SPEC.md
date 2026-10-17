@@ -3,7 +3,7 @@
 日期：2026-08-19
 项目：`fusion-factor-pipeline`
 性质：**预注册研究规范**——本文件定义本轮主实验使用的域规则；实验期间不因单个结果临时改动，必要变更需记录原因并重新执行受影响实验。
-配套：TRAINING_PLAN_v3.md（方案）、CHATLOG_2026-08-18_19.md（讨论溯源）
+配套：TRAINING_PLAN_v3.md（方案）、archive/CHATLOG_2026-08-18_19.md（讨论溯源）
 
 ---
 

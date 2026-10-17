@@ -23,19 +23,28 @@
 ```text
 fusion-factor-pipeline/
 ├── README.md
+├── AGENTS.md                       # 协作与文档规范
 ├── docs/
-│   ├── EXECUTION_PLAN.md      # 执行计划
-│   └── DEV_LOCKBOX.md         # 放松版锁箱契约
-├── config/
-│   └── dev_lockbox.yaml       # 观察锁箱配置
-├── bridge/
-│   ├── __init__.py
-│   └── dev_lockbox.py         # 开发者观察锁箱实现
-├── tests/
-│   └── test_dev_lockbox.py    # 锁箱冒烟与防篡改测试
-└── artifacts/
-    └── dev_lockbox/           # 链条、信号快照、状态
+│   ├── PROJECT.md                  # 长期决策与边界（权威）
+│   ├── HANDOFF.md                  # 当前稳定点与下一步（权威）
+│   ├── UNIVERSE_SPEC.md            # B1/B2/B3 域定义与口径
+│   ├── UPSTREAM_ENVIRONMENT.md     # 上游路径与启动校验
+│   ├── DATA_SOURCE_REPORT.md       # 数据源与行业 PIT 结论
+│   ├── INDUSTRY_PIT_2026-10-18.md  # 申万 SW2021 PIT 集成与判读
+│   ├── FORWARD_SHADOW_2026-10-17.md# 前向影子评分首次运行
+│   ├── C_TRACK_*_PREREG_*.md       # 验收预注册
+│   ├── WORK_REPORT_*.md            # 各轮定案报告（历史依据）
+│   ├── DEV_LOCKBOX.md              # 观察锁箱契约
+│   └── knowledge/                  # 可复用经验条目
+├── config/                         # 冻结配置与表达式
+├── bridge/                         # 面板/标签/评分/验收实现
+├── tests/                          # pytest（90 项）
+├── runs/                           # 各次实验结果
+└── artifacts/                      # 派生产物与锁箱
 ```
+
+文档以 `docs/PROJECT.md`（长期决策）与 `docs/HANDOFF.md`（当前状态与下一步）为准；
+`docs/knowledge/` 存放经过验证、可迁移的经验条目。
 
 ## 4. 上游仓库
 
@@ -68,8 +77,16 @@ python -m bridge.paths
 - [x] B2 因子裁决 + 消融 + 冻结：316 → 114 裁决池 → LOFO → **37 因子冻结池**（`config/factor_pool_b2_frozen_2026-08-28.json`）。
 - [x] 一次性内部 Evaluation（已消费，通过）：neutral HAC IC_IR 0.393、raw 0.255。
 - [x] **C 轨经济验收定案通过（2026-09-05 recast，`runs/c_track_acceptance_v2_recast_2026-09-05/`）**：机制层 1x 净年化超额 +3.360%、机会成本 50/50 混合 +6.374%；`production_authorized=false`。
-- [ ] 前向影子观察：待数据刷新 + 评分器等价校验 + 观察协议预注册后启动。
-- [ ] 行业历史 PIT：数据已可得（2026-09），待纯度验证与敏感性实验。
+- [x] **阶段 D 数据刷新（2026-10-17 完成）**：股本 PIT 至 2026 两期、市值面板至 2026-10-16；
+  全市场面板重物化至 **2026-10-16**（2,537,139 行），`(date,code)` 零重复，历史行逐列不变。
+  面板重物化不再依赖上游 v6（改用 `bridge/panel_extension.py` 从本地 K 线重建）。
+- [x] **前向影子评分首次运行（2026-10-17）**：冻结 `huber_b2_neutral_rank` 在选择期训练一次，
+  对 2026-07-20~10-16 共 59 个交易日**无标签**打分（95,285 行 / 2,150 只）；前向期零标签。
+- [x] **行业 PIT 集成（2026-10-18）**：申万 SW2021 官方历史分类表（带计入日期，真 PIT）已固化；
+  量测确认冻结面板有 156 只股票行业确实变更过；底部 10% 重合率 95.79% → **快照隐患关闭**。
+- [ ] 前向观察**预注册协议**：尚未登记（阶段 F 第 7 项），是正式观察前唯一的空白。
+- [ ] 评分器可重建/预测等价校验（阶段 E）尚未做。
+- [ ] 前向 IC 与经济性评估：需等 20 日标签落地（当前前向窗口标签全为 NaN）。
 
 详见 `docs/HANDOFF.md` 与 `docs/WORK_REPORT_2026-09-05_C_TRACK_RECAST.md`。
 
