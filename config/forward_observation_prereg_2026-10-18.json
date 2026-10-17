@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "classification": "forward_observation_preregistration",
+  "status": "registered_before_results",
+  "registered_at": "2026-10-18",
+  "registered_utc": "2026-10-17T23:35:00Z",
+  "stage": "F7",
+  "supersedes": null,
+  "note": "Phase F step 7. Fixes the metrics and decision rules so a later reading cannot be reinterpreted after the fact.",
+  "disclosure_sample_size_was_visible": {
+    "statement": "The NUMBER of label-eligible days (39) was known when this contract was written, because it follows deterministically from the data horizon and the 20-day label. The IC values were not.",
+    "consequence": "The minimum of 40 labelled days sits just above the visible 39. A reader must be able to see that, and the rule must not be changed later to fit a future sample.",
+    "therefore": [
+      "the threshold is recorded here as of this date and is not adjustable retroactively",
+      "the first reading is reported as EXPLORATORY by rule, not by judgement"
+    ]
+  },
+  "subject": {
+    "scoring_model_id": "huber_b2_neutral_rank",
+    "frozen_config": "config/factor_pool_b2_frozen_2026-08-28.json",
+    "features_file": "config/factor_pool_b2_post_lofo_retry_starter_2026-08-28_features.json",
+    "feature_count": 37,
+    "target": "y_neutral_rank20_b2",
+    "label_horizon_trading_days": 20,
+    "acceptance_track": "C_bottom_exclusion",
+    "bottom_exclusion_fraction": 0.1,
+    "ensemble_seeds": [
+      42,
+      43,
+      44
+    ],
+    "training_window": "2023-06-30..2024-09-12",
+    "training_mode": "fit_once_on_selection_no_updates"
+  },
+  "observation_window": {
+    "declared_start": "2026-07-20",
+    "declared_end": "2026-10-16",
+    "declared_days": 59,
+    "clean_window_justification": "Data budget: development set 2023-06-01..2025-12-31 consumed; 2026-01-01..2026-07-17 permanently consumed by v6 M8. Clean data starts 2026-07-18, and 2026-07-20 is the first trading day with a complete forward bar.",
+    "labelled_days_available": 39,
+    "labelling_rule": "A date is labelled only when its 20-trading-day forward window is fully inside the materialised panel. The last 20 trading days of any window are structurally unlabelled; this is a property of a forward label, not a data gap."
+  },
+  "known_limitations": [
+    {
+      "id": "L1_coverage_cliff",
+      "statement": "Daily code count drops from about 3,132 before 2026-07-24 to about 2,633 after it (561 codes have no post-07-24 bars in the baostock backfill). B2 domain size falls from about 1,948 to about 1,590.",
+      "impact": "Cross-day comparisons of domain size, turnover and concentration are not valid across the seam. Daily IC is a per-day cross-sectional statistic and is unaffected in construction, but the post-seam universe is a narrower, possibly non-random sample.",
+      "mitigation": "Report every metric split by pre-seam (2026-07-20..07-24) and post-seam (2026-07-27..) sub-periods, and never present the post-seam domain as an investable universe."
+    },
+    {
+      "id": "L2_small_sample",
+      "statement": "At most 39 labelled days exist today. A 20-day label on overlapping windows makes consecutive daily ICs strongly autocorrelated; effective independent samples are roughly 39/20, near 2.",
+      "impact": "Any IC_IR computed here is essentially uninformative. A sign test on this sample has very low power.",
+      "mitigation": "Interim readings below 40 labelled days are explicitly exploratory and cannot trigger promotion or rejection. HAC IC_IR is reported but is not a decision input before 250 days."
+    },
+    {
+      "id": "L3_industry_snapshot_vs_pit",
+      "statement": "The frozen panel industry column is a static snapshot. The SW2021 PIT alternative was measured on 2026-10-18: 156 codes genuinely reclassified, daily rank correlation 0.99181, bottom-decile overlap 0.9579.",
+      "impact": "Neutralisation in the frozen scoring path uses the snapshot. This is a disclosed deviation, not an equivalence.",
+      "mitigation": "Report industry exposure under both the snapshot and the PIT column; switching the production path requires a separate preregistration."
+    },
+    {
+      "id": "L4_benchmark_source",
+      "statement": "benchmark 000985 after 2026-07-17 comes from a Tencent quote API extension, not the local archive. The fetched series reproduces the archive exactly on all 1,098 overlap days (max abs diff 0 on open/high/low/close).",
+      "impact": "Label values after 2026-07-17 depend on a second source.",
+      "mitigation": "The extension is verified before use and stored separately; the archive is never rewritten."
+    }
+  ],
+  "primary_endpoint": {
+    "name": "forward_daily_spearman_ic",
+    "definition": "Per labelled date, Spearman rank correlation between prediction and y_excess20 over B2 members with both values present. Requires at least 500 names and at least 5 distinct values on each side, else the date is dropped and counted.",
+    "aggregation": "arithmetic mean of daily values"
+  },
+  "secondary_endpoints": [
+    {
+      "name": "forward_ic_win_rate",
+      "definition": "share of labelled dates with daily IC > 0"
+    },
+    {
+      "name": "forward_ic_hac_ir",
+      "definition": "mean IC divided by Newey-West long-run standard deviation, lag 20",
+      "decision_role": "reported only below 250 labelled days"
+    },
+    {
+      "name": "bottom_exclusion_list_turnover",
+      "definition": "Per date-to-date transition, |excluded_t intersect excluded_{t-1}| / |excluded_{t-1}| where excluded is the bottom 10% of the scored B2 cross-section.",
+      "reference": "historical C-track turnover reported in runs/c_track_acceptance_v2_recast_2026-09-05"
+    },
+    {
+      "name": "excluded_group_forward_excess",
+      "definition": "Mean y_excess20 of the bottom-10% excluded set minus mean y_excess20 of the full scored B2 cross-section, per labelled date, then averaged.",
+      "expected_sign": "negative"
+    },
+    {
+      "name": "industry_exposure_stability",
+      "definition": "Share of excluded names per industry, reported per date under the snapshot column and the SW2021 PIT column, plus the maximum single-industry share.",
+      "decision_role": "disclosure only"
+    },
+    {
+      "name": "score_distribution_drift",
+      "definition": "per-date mean and standard deviation of prediction over the scored B2 set"
+    }
+  ],
+  "reference_values_from_frozen_evaluation": {
+    "source": "runs/factor_evaluation_v1_b2_frozen_2026-08-28/huber_b2_neutral_rank/metrics.json",
+    "mean_daily_spearman_ic": 0.1253,
+    "hac_ic_ir": 0.393,
+    "note": "Evaluation period 2024-10-22..2025-12-31. Consumed; not a forward claim."
+  },
+  "decision_rules": {
+    "minimum_labelled_days_for_decision": 40,
+    "exploratory_below_that": true,
+    "required_labelled_days_for_promotion": 250,
+    "verdicts": {
+      "PASS_CONTINUE": {
+        "rule_all_of": [
+          "mean_daily_spearman_ic > 0",
+          "mean_daily_spearman_ic >= 0.5 * 0.1253 (i.e. >= 0.06265)",
+          "forward_ic_win_rate >= 0.50",
+          "both half-window IC means have the same sign as the full-window mean"
+        ],
+        "meaning": "Forward behaviour is consistent with the frozen evaluation. Continue observing."
+      },
+      "INCONCLUSIVE": {
+        "rule": "Does not satisfy PASS_CONTINUE and does not trigger any halt condition: positive but too small, sign-inconsistent between halves, or too few labelled days.",
+        "meaning": "Keep observing. No change to the frozen configuration is authorized."
+      },
+      "HALT": {
+        "rule_any_of": [
+          "mean_daily_spearman_ic <= 0",
+          "mean_daily_spearman_ic < -0.06265",
+          "any day with fewer than 500 scored B2 names",
+          "more than 0.5% of predictions non-finite on any day",
+          "per-date score mean outside [0.40, 0.60]",
+          "per-date score std outside [0.02, 0.10]",
+          "abs(mean_daily_spearman_ic) > 0.40 (implausible for a 20-day label; treat as leakage or bug, not alpha)"
+        ],
+        "meaning": "Stop and diagnose. A halt is not evidence against the factor; it means the observation environment is not trustworthy and must be explained before more data is collected."
+      }
+    },
+    "forbidden_actions_during_observation": [
+      "changing the factor list",
+      "changing the label definition or horizon",
+      "changing the exclusion fraction",
+      "changing model hyperparameters or seeds",
+      "re-training on any forward data",
+      "using forward results to select factors",
+      "dropping days because their IC was unfavourable"
+    ]
+  },
+  "promotion_gate": {
+    "requires": [
+      "at least 250 labelled forward days",
+      "PASS_CONTINUE at that sample",
+      "excluded_group_forward_excess negative and stable across halves",
+      "bottom_exclusion_list_turnover consistent with the historical C-track",
+      "no unexplained halt episode"
+    ],
+    "then": "a separate preregistration for the v6 official lockbox, single unblinding"
+  },
+  "reporting": {
+    "frequency": "on demand, at least monthly while the window grows",
+    "required_splits": [
+      "pre-seam 2026-07-20..2026-07-24",
+      "post-seam 2026-07-27.."
+    ],
+    "must_report": [
+      "labelled day count and dropped-day count",
+      "mean IC with and without the pre-seam days",
+      "excluded-group forward excess under both industry columns",
+      "explicit statement that the post-seam universe is narrower by 561 codes"
+    ]
+  },
+  "production_authorized": false
+}

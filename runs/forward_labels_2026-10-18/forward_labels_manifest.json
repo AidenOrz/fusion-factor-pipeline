@@ -1,0 +1,44 @@
+{
+  "benchmark_extension_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\data\\refdata\\benchmark_000985_ext.parquet",
+  "benchmark_fill": {
+    "benchmark_dates_filled": 59,
+    "benchmark_fill_end": "2026-10-16",
+    "benchmark_fill_start": "2026-07-20",
+    "benchmark_rows_filled": 158134,
+    "rows_missing_benchmark_after": 0,
+    "rows_missing_benchmark_before": 158134
+  },
+  "classification": "forward_label_rebuild",
+  "coverage": {
+    "first_labelled_date": "2026-07-20",
+    "label_dates": 39,
+    "label_rows": 102687,
+    "last_labelled_date": "2026-09-10",
+    "unlabelled_days_at_tail": 20,
+    "window_days": 59,
+    "window_end": "2026-10-16",
+    "window_start": "2026-07-20"
+  },
+  "label_definition": "bridge.labels.attach_cross_sectional_labels (unchanged)",
+  "output_file": "runs\\forward_labels_2026-10-18\\forward_labels.parquet",
+  "panel_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\data\\panel_forward_features_2026-10-16_pit.parquet",
+  "production_authorized": false,
+  "purpose": "Labels for the clean forward window, produced by the same definition used historically, after the 000985 benchmark gap was closed.",
+  "reference_check": {
+    "historical_labels_unchanged": true,
+    "max_abs_diff_by_column": {
+      "benchmark_ret20": 0,
+      "stock_ret20": 0,
+      "y_excess20": 0,
+      "y_neutral_rank20_b1": 0,
+      "y_neutral_rank20_b2": 0,
+      "y_neutral_rank20_b3": 0,
+      "y_raw_rank20_b1": 0,
+      "y_raw_rank20_b2": 0,
+      "y_raw_rank20_b3": 0
+    },
+    "overlap_rows": 158134,
+    "reference_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\data\\panel_forward_features_2026-10-16_pit.parquet"
+  },
+  "window_start": "2026-07-20 00:00:00"
+}

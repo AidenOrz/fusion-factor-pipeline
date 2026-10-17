@@ -1,0 +1,187 @@
+{
+  "checks": {
+    "halt_checks": {
+      "any_day_fewer_than_500_names": false,
+      "ic_below_negative_floor": false,
+      "ic_non_positive": false,
+      "implausibly_large_ic": false,
+      "non_finite_predictions": false,
+      "score_mean_out_of_band": false,
+      "score_std_out_of_band": false
+    },
+    "minimum_labelled_days": 40,
+    "pass_checks": {
+      "halves_same_sign": true,
+      "ic_above_half_of_evaluation": true,
+      "ic_positive": true,
+      "win_rate_at_least_half": true
+    },
+    "pass_floor_ic": 0.06265
+  },
+  "classification": "forward_evaluation",
+  "coverage_cliff_disclosed": true,
+  "labels_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\runs\\forward_labels_2026-10-18\\forward_labels.parquet",
+  "post_seam_universe_is_not_investable": true,
+  "primary_endpoint": {
+    "first_half_mean": 0.08269095230114012,
+    "hac_ic_ir": 0.7558835505891435,
+    "mean": 0.12688808436879864,
+    "name": "forward_daily_spearman_ic",
+    "post_seam_days": 34,
+    "post_seam_mean": 0.13358446502299307,
+    "pre_seam_days": 5,
+    "pre_seam_mean": 0.08135269592027664,
+    "second_half_mean": 0.16887535983307428,
+    "std": 0.11821489425513143,
+    "win_rate": 0.8205128205128205
+  },
+  "production_authorized": false,
+  "protocol_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\config\\forward_observation_prereg_2026-10-18.json",
+  "protocol_status": "registered_before_results",
+  "scores_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\runs\\forward_shadow_2026-10-18_pit\\forward_scores.parquet",
+  "scoring_model_id": "huber_b2_neutral_rank",
+  "secondary_endpoints": {
+    "bottom_exclusion_turnover_days": 58,
+    "bottom_exclusion_turnover_mean": 0.5267403328885395,
+    "excluded_group_forward_excess_days": 39,
+    "excluded_group_forward_excess_mean": -0.022509484169684187,
+    "excluded_group_forward_excess_positive_share": 0.1282051282051282,
+    "industry_exposure": {
+      "industry": {
+        "distinct_values": 31,
+        "mean_daily_max_single_industry_share": 0.1300068681206898,
+        "top_industries_by_mean_excluded_share": [
+          {
+            "code": "基础化工",
+            "industry": "基础化工",
+            "mean_share": 0.10367051872120572
+          },
+          {
+            "code": "机械设备",
+            "industry": "机械设备",
+            "mean_share": 0.0926098419521603
+          },
+          {
+            "code": "电子",
+            "industry": "电子",
+            "mean_share": 0.0853447737708834
+          },
+          {
+            "code": "电力设备",
+            "industry": "电力设备",
+            "mean_share": 0.07527512791971074
+          },
+          {
+            "code": "医药生物",
+            "industry": "医药生物",
+            "mean_share": 0.05724491411039518
+          },
+          {
+            "code": "传媒",
+            "industry": "传媒",
+            "mean_share": 0.04959366864858777
+          },
+          {
+            "code": "汽车",
+            "industry": "汽车",
+            "mean_share": 0.04663905999821156
+          },
+          {
+            "code": "计算机",
+            "industry": "计算机",
+            "mean_share": 0.04592659378061035
+          },
+          {
+            "code": "轻工制造",
+            "industry": "轻工制造",
+            "mean_share": 0.04219092818737995
+          },
+          {
+            "code": "公用事业",
+            "industry": "公用事业",
+            "mean_share": 0.04122347008614921
+          }
+        ],
+        "worst_daily_max_single_industry_share": 0.20125786163522014
+      },
+      "industry_pit_l1": {
+        "distinct_values": 31,
+        "mean_daily_max_single_industry_share": 0.1300068681206898,
+        "top_industries_by_mean_excluded_share": [
+          {
+            "code": "22",
+            "industry": "基础化工",
+            "mean_share": 0.10367051872120572
+          },
+          {
+            "code": "64",
+            "industry": "机械设备",
+            "mean_share": 0.0926098419521603
+          },
+          {
+            "code": "27",
+            "industry": "电子",
+            "mean_share": 0.0853447737708834
+          },
+          {
+            "code": "63",
+            "industry": "电力设备",
+            "mean_share": 0.07527512791971074
+          },
+          {
+            "code": "37",
+            "industry": "医药生物",
+            "mean_share": 0.057350846313785016
+          },
+          {
+            "code": "72",
+            "industry": "传媒",
+            "mean_share": 0.04959366864858777
+          },
+          {
+            "code": "28",
+            "industry": "汽车",
+            "mean_share": 0.04663905999821156
+          },
+          {
+            "code": "71",
+            "industry": "计算机",
+            "mean_share": 0.04592659378061035
+          },
+          {
+            "code": "36",
+            "industry": "轻工制造",
+            "mean_share": 0.04219092818737995
+          },
+          {
+            "code": "41",
+            "industry": "公用事业",
+            "mean_share": 0.04122347008614921
+          }
+        ],
+        "worst_daily_max_single_industry_share": 0.20125786163522014
+      },
+      "note": "Both columns are reported on purpose: the frozen path neutralises with the snapshot column, and the SW2021 PIT column is a disclosed alternative. They are different taxonomies and must not be merged."
+    },
+    "score_mean_range": [
+      0.49030778545138354,
+      0.5054215434521468
+    ],
+    "score_std_range": [
+      0.04437585616657519,
+      0.06140525318200319
+    ]
+  },
+  "verdict": "EXPLORATORY",
+  "verdict_is_exploratory": true,
+  "verdict_reason": "labelled days 39 < protocol minimum 40",
+  "window": {
+    "declared": [
+      "2026-07-20",
+      "2026-10-16"
+    ],
+    "dropped_days": 20,
+    "labelled_days": 39,
+    "scored_days": 59
+  }
+}

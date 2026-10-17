@@ -1,0 +1,52 @@
+{
+  "all_models_equivalent": true,
+  "classification": "frozen_scorer_equivalence_check",
+  "evaluation_labels_used_for_fit": false,
+  "evaluation_period": "2024-10-22..2025-12-31",
+  "feature_count": 37,
+  "features_file": "config/factor_pool_b2_post_lofo_retry_starter_2026-08-28_features.json",
+  "frozen_config_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\config\\factor_pool_b2_frozen_2026-08-28.json",
+  "models": {
+    "huber_b2_neutral_rank": {
+      "equivalent": true,
+      "ic_matches": true,
+      "key_sets_match": true,
+      "max_abs_diff": 0.0,
+      "mean_abs_diff": 0.0,
+      "predictions_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\runs\\factor_evaluation_v1_b2_frozen_2026-08-28\\huber_b2_neutral_rank\\predictions.parquet",
+      "predictions_sha256": "9ebf8b4eb4473d6f4876744778754400a492c934ceb66b532a362e8f14edac32",
+      "rebuilt_ic": 0.125299,
+      "recorded_ic": 0.125299,
+      "rows_compared": 518372,
+      "rows_only_rebuilt": 0,
+      "rows_only_recorded": 0,
+      "rows_over_tolerance": 0,
+      "tolerance": 0.0,
+      "train_rows": 560456,
+      "worst_examples": []
+    },
+    "huber_b2_raw_rank": {
+      "equivalent": true,
+      "ic_matches": true,
+      "key_sets_match": true,
+      "max_abs_diff": 0.0,
+      "mean_abs_diff": 0.0,
+      "predictions_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\runs\\factor_evaluation_v1_b2_frozen_2026-08-28\\huber_b2_raw_rank\\predictions.parquet",
+      "predictions_sha256": "e3f28d580c27bb4e34b95ae43469c2efea741378f59e8e285fce118bc7cca44b",
+      "rebuilt_ic": 0.134586,
+      "recorded_ic": 0.134586,
+      "rows_compared": 518372,
+      "rows_only_rebuilt": 0,
+      "rows_only_recorded": 0,
+      "rows_over_tolerance": 0,
+      "tolerance": 0.0,
+      "train_rows": 560456,
+      "worst_examples": []
+    }
+  },
+  "panel_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\data\\panel_fusion_b2_adjudicated_2026-08-27.parquet",
+  "panel_sha256": "b411bb7f1307bfc5b000b5723a741ca19d8894147a6e81f0f4f882622771f7c4",
+  "production_authorized": false,
+  "purpose": "Phase E gate: a forward score is only comparable to the historical record if the registered estimator reproduces it exactly.",
+  "selection_period": "2023-06-30..2024-09-12"
+}

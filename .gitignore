@@ -22,6 +22,25 @@ runs/*
 !runs/factor_selection_v2_direction_review/*.json
 !runs/factor_selection_v2_direction_review/*.md
 
+# Forward observation record (2026-10-18). These are small, reviewable evidence
+# for the registered protocol: the first reading, the equivalence gate, and the
+# industry-divergence return profile. The parquet payloads stay local.
+!runs/forward_shadow_2026-10-17/
+!runs/forward_shadow_2026-10-17/*.csv
+!runs/forward_shadow_2026-10-17/*.json
+!runs/forward_shadow_2026-10-18_pit/
+!runs/forward_shadow_2026-10-18_pit/*.csv
+!runs/forward_shadow_2026-10-18_pit/*.json
+!runs/forward_evaluation_2026-10-18/
+!runs/forward_evaluation_2026-10-18/*.csv
+!runs/forward_evaluation_2026-10-18/*.json
+!runs/forward_labels_2026-10-18/
+!runs/forward_labels_2026-10-18/*.json
+!runs/scorer_equivalence_2026-10-18/
+!runs/scorer_equivalence_2026-10-18/*.json
+!runs/industry_divergence_returns_2026-10-18/
+!runs/industry_divergence_returns_2026-10-18/*.json
+
 # Derived market data and serialized panels
 *.parquet
 *.sqlite3

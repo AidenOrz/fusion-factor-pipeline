@@ -1,7 +1,9 @@
 # HANDOFF — 当前稳定点与下一步
 
-> 更新时间：2026-10-17（**阶段 D 已完成**：数据刷新至 2026-10-16，面板重物化并通过主键断言，行业 PIT 判为快照口径；见 §3/§4）
-> 状态：C 轨经济验收已定案通过（2026-09-05 recast）。此后六周无新实验。下一主目标：**启动只读影子前向观察**；并行项：行业历史 PIT 集成。`production_authorized=false` 维持不变。
+> 更新时间：**2026-10-18**（阶段 D / E / F7 全部收口：数据刷新至 2026-10-16、评分器等价校验通过、
+> 前向观察预注册已登记并完成首次判读；行业 PIT 集成与差异集收益画像已完成）
+> 状态：C 轨经济验收已定案通过（2026-09-05 recast）。**前向观察已按预注册启动，首次判读为 EXPLORATORY（39/40 个标签日）**。
+> 下一主目标：**累积到 40 个标签日后按协议出第一份非探索性判读**，并把这轮新暴露的两项稳健性补齐。`production_authorized=false` 维持不变。
 
 ## 1. 最后稳定点（已验证，可直接依赖）
 
@@ -10,8 +12,9 @@
 - **C 轨经济验收（定案，当前唯一有效结果）**：`runs/c_track_acceptance_v2_recast_2026-09-05/`，commit 内嵌 `d858d1c`。机制层五门全过：毛年化 +3.353%（≥2%）、1x 净 +3.360%（≥1%）、2x 累计 +4.030%（>0）、超额回撤 0.659%（≤5%）、三段分期全正；机会成本 50/50 混合 +6.374%（>0）。v1（`..._v1_b2_frozen_2026-08-28/` 及 attempt 目录）为历史参照。
 - **基准确则（2026-08-28 裁决，两层制）**：机制层硬门槛 = B2 域等权；机会成本层 = 中证 1000/2000 及 50/50 混合（次级判定）；上证 = 纯附录。旧"跑赢上证"门槛已被 `docs/PROJECT.md` §2 决策 1 的取代记录替代。
 - **数据预算**：开发集 2023-06-01~2025-12-31 已消费；2026-01-01~07-17 永久消费（v6 M8）；**干净数据自 2026-07-18 起算**。
-- **工程**：pytest 72 项全绿（含 C 轨端到端合成验收测试）；冻结提交 `d053c6e`；C 轨模拟器缺陷史与修复见 `docs/BUGFIX_REPORT_2026-09-05.md`。
-  - **2026-10-17 复核**：72 项**确认仍全绿**。注意本机直接跑 `pytest tests` 会得到 `44 passed, 28 errors`，28 个全是 setup 阶段 `PermissionError`（栈在 `_pytest/tmpdir.py`、`pytestqt`，无项目源码），根因与绕行命令见 `docs/knowledge/windows_sandbox_0o700_pytest.md`：沙箱下 `mkdir(mode=0o700)`（pytest 临时目录固定用法）生成的 DACL 连创建者都列不出。**这是环境缺陷，非代码回归**；用该知识条目的插件+basetemp 组合可复现 72 passed。
+- **工程**：pytest **117 项全绿**（2026-10-18 复跑；含 C 轨端到端合成验收、前向评分零泄漏、等价校验、预注册强制降级）；冻结提交 `d053c6e`；C 轨模拟器缺陷史与修复见 `docs/BUGFIX_REPORT_2026-09-05.md`。
+  - **2026-10-17 复核**：当时 72 项确认全绿。注意早期在本机沙箱下直接跑 `pytest tests` 会得到 `44 passed, 28 errors`，28 个全是 setup 阶段 `PermissionError`（栈在 `_pytest/tmpdir.py`、`pytestqt`，无项目源码），根因与绕行命令见 `docs/knowledge/windows_sandbox_0o700_pytest.md`：沙箱下 `mkdir(mode=0o700)`（pytest 临时目录固定用法）生成的 DACL 连创建者都列不出。**这是环境缺陷，非代码回归**。
+  - **2026-10-18 复核**：清掉 16 个遗留临时目录后，在 danger-full-access 下**直接**跑 `pytest tests` 得 **117 passed**，无需插件或 `--basetemp`。该知识条目仍适用于回到受限沙箱的场景。
 - **观察锁箱**：`artifacts/dev_lockbox/dev/` active，3 个非空 live 信号日（2026-08），verify 通过。v6 官方锁箱未消费。
 
 ## 2. 关键已批准决策（不得在本轮回退）
@@ -25,7 +28,31 @@
 ## 3. 待办与阻碍
 
 - [x] **前向影子评分：2026-10-17 已完成首次只读运行**——用冻结 `huber_b2_neutral_rank` 在**选择期训练一次**（2023-06-30~2024-09-12，560,456 行），对 **2026-07-20~2026-10-16 共 59 个交易日**无标签打分（95,285 行 / 2,150 只 / 2,150 个 code-day）。前向期**零标签**：投影层物理排除 `y_*` 列并有代码断言 + 单测覆盖。产物 `runs/forward_shadow_2026-10-17/`，报告 `docs/FORWARD_SHADOW_2026-10-17.md`。评分器日间均值 0.4903~0.5054、日间标准差 0.0444~0.0614，**无漂移**；三 seed 最大分歧 0.0316。**这证明评分器在 2026 新数据上行为与训练期尺度一致，不等于 alpha 已验证**——前向 IC 需等 20 日标签落地。
-- [ ] **前向观察预注册协议仍未登记**（阶段 F 第 7 项）：观察频率、指标、判定标准、中止/升级条件尚未写成独立预注册文件；`docs/FORWARD_SHADOW_2026-10-17.md` 是**首次运行记录**，不是预注册。
+- [x] **前向观察预注册协议已登记（2026-10-18，阶段 F 第 7 项收口）**：
+  - 合约 `config/forward_observation_prereg_2026-10-18.json`（受版本控制，`status=registered_before_results`），
+    说明文档 `docs/FORWARD_OBSERVATION_PREREG_2026-10-18.md`。
+  - 主指标日度 Spearman IC；次指标 IC 胜率、HAC IC_IR（250 日前只报告）、剔除名单换手率、
+    剔除组前向超额、行业暴露（快照 + PIT 双口径）、评分分布漂移。
+  - 判定四档：PASS_CONTINUE / INCONCLUSIVE / HALT / **EXPLORATORY（标签日 < 40 强制降级）**。
+  - `bridge/forward_evaluation.py` **拒绝**在未登记状态下运行，并强制降级，不靠自觉。
+  - **首次判读（2026-10-18）= EXPLORATORY**：39 个标签日、IC 均值 0.12689、胜率 82.05%、
+    剔除组前向超额 −2.25%、换手 0.527。四项 PASS 条件全满足、七项 HALT 全未触发，
+    但**因样本量不足按规则不得判通过**。**这不是 alpha 已验证**。
+- [x] **阶段 E：冻结评分器等价校验通过（2026-10-18）**：两个模型与存档 `predictions.parquet`
+  逐键比对 **max abs diff = 0、键集合零多零缺**，IC 亦逐位复现（0.134586 / 0.125299）。
+  报告 `docs/SCORER_EQUIVALENCE_2026-10-18.md`，产物 `runs/scorer_equivalence_2026-10-18/`。
+- [x] **基准 000985 地平线缺口闭合（2026-10-18）**：本地归档止于 2026-07-17、baostock 无该代码，
+  改用腾讯行情接口补齐 59 个交易日，**重叠 1,098 日逐值完全一致（max abs diff = 0）**，
+  扩展段独立存为 `data/refdata/benchmark_000985_ext.parquet`，**原归档未改写**。
+  代码 `bridge/benchmark_extension.py`，知识条目
+  `docs/knowledge/verify_external_series_by_exact_reproduction.md`。
+  **这是本轮最关键的一步**：它把"前向 IC 不可计算"变成了"可算 39 个交易日"。
+- [x] **前向标签重建（2026-10-18）**：`bridge/forward_labels.py`，39 个标签日 / 102,687 行；
+  **历史标签零改动**（与现面板重叠 158,134 行，9 个标签列 max abs diff 全为 0）。
+- [x] **行业 PIT 差异集收益画像（2026-10-18，此前被标签缺失阻塞）**：
+  `snap_only` 超额 +3.38% vs `pit_only` +2.64%，差 +0.74pp，**Mann-Whitney p = 0.9495**
+  → 两个差异集在已实现收益上统计上不可区分，补齐了"快照隐患关闭"的收益侧证据。
+  局限：39 个标签日、差异集各约 290 行，**p 大不等于相等**。代码 `bridge/industry_divergence.py`。
   - **2026-10-17 实测数据地平线（历史记录；D-4 已通过本地重建解除，见 §4）**：上游 v6 面板 `a-share-factor-engine-v6/artifacts/panel/panel.parquet`（1,968,826 行 / 3,178 只 / 629 天）**止于 2025-12-31**，与本地 `panel_fusion_full_market.parquet` 完全一致。`bridge/panel.py` 的日线源是**该上游面板**，不是 baostock，因此**上游不推进则全市场面板无法重物化**。本地 K 线归档（`A_SHARE_KLINE_DATA_ROOT`，3,200 个 csv）全局最大日期 **2026-07-24**（3,199 只 ≥ 2026-07-01，3,191 只 ≥ 2026-07-18）。baostock 会话实测**在线且已到 2026-10-16**（`sh.600000` 探针 28 个交易日命中至 2026-10-16）。**结论：面板刷新不是本项目内可独立完成的步骤，必须先由上游 v6 重建 panel.parquet 至 2026-07-24 及以后。**
   - **2026-10-17 根治性证据：这不是"上游偷懒"，而是上游治理规则明确禁止**。直接执行上游 CLI 被拒：
     `python run.py build-panel --analysis-end 2026-07-24` → `ValueError: build-panel only accepts the development split 2023-06-01..2025-12-31`（`v6/src/.../cli.py:194`）。
@@ -92,7 +119,7 @@
      - **唯一差异是标签的 NA 模式，且是修复而非回归**：`stock_ret20/benchmark_ret20/y_excess20/y_*` 在 2025-12-04~12-31 有 63,169 行"旧缺新有"（`frozen_only = 0`，即有值处 **diff = 0**）。旧面板因数据止于 2025-12-31 而在末 20 个交易日无法生成 20 日前瞻标签；新面板能看到后续行情，故正确填充。**这不是冲突**。
      - **8 个 v6 派生列已证实可本地精确复现**（对 5 只股票 629 天全量比对，max abs diff = 0），公式取自 `v6/src/.../data/panel.py::compute_stock_indicators` 并镜像实现。
      - **上游 `panel_recent.metadata.json` 的交叉印证**：其记录 `analysis_end=2026-07-24`、`row_count=2394957`、`stock_count=3194`——与本次重建的 **行数与股票数完全一致**，独立佐证重建口径正确。
-     - **仍受限（非阻塞，属固有边界）**：干净前向窗口实际只有 **2026-07-20~07-24 共 5 个交易日**（本地 K 线止于 07-24）；基准 `_bench_000985` 只到 **2026-07-17**（baostock 无该代码，但 `sh.000300`/`sh.000001` 可到 2026-10-16）；20 日标签在数据边缘天然为 NaN。
+     - **当时的限制（已由 2026-10-17 接缝延伸与 2026-10-18 基准补齐解除，见 §3）**：早期干净前向窗口只有 **2026-07-20~07-24 共 5 个交易日**（本地 K 线止于 07-24）；基准 `_bench_000985` 只到 **2026-07-17**（baostock 无该代码，但 `sh.000300`/`sh.000001` 可到 2026-10-16）；20 日标签在数据边缘天然为 NaN。
      - **2026-10-17 实测：延伸至 2026-10-16 需要跨源基准对齐，不能直接拼接**（重要，避免后续踩坑）：
        - baostock 可查到 2026-10-16，其**成交量/成交额**与本地归档在 6 只股票 × 39 个重叠日上对齐到浮点精度（本地"手" × 100 == 股，偏差 ~1e-6）。
        - 但**收盘价不一致，且差值随日期变化**：本地隐含因子在重叠段有多个取值（如 `000001` 8 个、`600519` 12 个），单因子拟合残差远超 2 位小数舍入容差（`600519` 残差 28.02 元）。即两端**前复权基期不同且非恒定比例**。
@@ -102,29 +129,58 @@
      - **脚本**：`artifacts/build_extension_2026.py`（本次新增，一次性构建器；排除聚合文件 `all_main_board_kline.csv`，它含 1 行违反 vwap 契约的数据会触发 `bridge/data.py` 断言）。
 5. 行业 PIT 数据纯度验证：调整生效日个案抽查（已知改行个股的公告日前后）、与现有快照源同日期冲突率、2023 年起覆盖率；结论写入 `docs/DATA_SOURCE_REPORT.md` 更新。**验证不过则行业 PIT 不进入任何生产路径。**
 
-### 阶段 E：评分器等价校验（阶段 D 后）
+### 阶段 E：评分器等价校验 —— **已完成（2026-10-18）**
 
-6. 用冻结配置重新物化 `huber_b2_neutral_rank` 三种子评分器，对 evaluation 期纯预测比对：与 `runs/factor_evaluation_v1_b2_frozen_2026-08-28/huber_b2_neutral_rank/predictions.parquet` 逐键逐分一致（不重新训练、不看标签）。不等价则停线诊断，不得带病进入前向。
+6. [x] 用冻结配置重建两个模型，对 evaluation 期纯预测比对：`huber_b2_raw_rank` 与
+   `huber_b2_neutral_rank` 各 518,372 行，**max abs diff = 0、键集合零多零缺**，IC 逐位复现
+   （0.134586 / 0.125299）。报告 `docs/SCORER_EQUIVALENCE_2026-10-18.md`。
+   **容差写死为 0**，不接受"够接近"——放宽容差等于取消这一关。
 
-### 阶段 F：前向观察（协议先行）
+### 阶段 F：前向观察（协议先行）—— **第 7 项已完成**
 
-7. 预注册影子观察协议（启动前登记）：观察频率、指标（日 IC、滚动 IC、剔除名单变更率、剔除组后续超额）、判定标准（**IC 方向与量级落在历史分布范围内**，而非复制 +3.4% 超额）、中止/升级条件、行业暴露持续披露口径。
-8. 从预先声明的新日期启动只读影子观察；不回填已可见日期为前向样本。
+7. [x] 预注册观测协议已登记（2026-10-18）：机器可校验合约
+   `config/forward_observation_prereg_2026-10-18.json` + 说明
+   `docs/FORWARD_OBSERVATION_PREREG_2026-10-18.md`。含指标定义、四档判定
+   （PASS_CONTINUE / INCONCLUSIVE / HALT / **EXPLORATORY**）、观察期禁止动作清单、晋级门槛。
+   `bridge/forward_evaluation.py` 强制"未登记不运行"且强制降级，不依赖自觉。
+8. [ ] 只读影子观察：窗口 2026-07-20 起已声明，**首次判读 2026-10-18 已完成（EXPLORATORY）**。
+   后续按协议继续累积；**不回填已可见日期为前向样本**。
 9. **已完成（2026-10-18）**：行业 PIT 影子评分器敏感性实验。用户提供了申万 SW2021 官方历史分类表（**带计入日期，是真 PIT**），已固化并可校验。
    - 数据：12,929 行 / 5,934 只 / 生效日到 2026-10-14；`(code,effective_date)` 零重复、生效日严格递增 0 违反、面板 as-of 未匹配 **0 / 2,537,139**、抽样覆盖率 **100%**。
    - 量测：冻结面板 3,194 只行业**全部不变**，而申万 PIT 显示 **156 只确实变更过**（最多 3 次，影响 4.92% code-day）。
    - 判读：底部 10% **重合率 95.79%**（>85%）、日 rank 相关 **0.992**、差异集完全对称（404 vs 404）且市值/流动性/ST 无富集 → **快照隐患关闭**。
-   - 局限：前向窗口 `y_excess20` 全为 NaN（标签需未来数据），故差异集**收益画像暂不可算**，只能给状态画像；待标签落地后补算。
+   - **局限已解除（同日补算）**：基准 000985 缺口闭合后已有 39 个标签日，差异集收益画像见 §3 与
+     `docs/INDUSTRY_PIT_2026-10-18.md` §3.1：`snap_only` 超额 +3.38% vs `pit_only` +2.64%，
+     差 +0.74pp，Mann-Whitney **p = 0.9495** → 收益侧不可区分，补齐了原判据缺的那一半。
+     仍须声明：39 个标签日、差异集各约 290 行，**p 大不等于相等**。
    - 产物：`docs/INDUSTRY_PIT_2026-10-18.md`、`data/refdata/sw2021_industry_pit.parquet`、`runs/forward_shadow_2026-10-18_pit/`；`bridge/forward_scoring.py` 新增 `--industry-pit`。
    - **边界**：关闭不等于等价；冻结 C 轨结果仍沿用快照口径，切换 PIT 需另立预注册。
 
 ### 阶段 G：评估与升级（影子观察积累后）
+
+> 现况（2026-10-18）：39 / 40 个标签日。**再累积 1 个标签日即可出第一份非探索性判读**，
+> 但 250 日的晋级门槛远未到，本轮不涉及锁箱。
 
 10. 影子观察达到预注册时长/样本量后评估：前向 IC 行为、剔除经济性、行业暴露稳定性。
 11. 通过则评估是否进入 v6 官方锁箱（单次揭盲语义不变）；不通过则回描述阶段，冻结结果归档锁箱。
 12. 知识库沉淀：行业快照→PIT 直接测量结果、C 轨实现缺陷教训（组合语义须合成测试锁定、manifest 必须内嵌 commit）。
 
 ## 5. 恢复入口（下一会话可直接执行）
+
+**本轮（2026-10-18）收口后的最直接动作**——三条命令即可复现全部结论：
+
+```powershell
+python bridge/benchmark_extension.py --start 2022-01-01 --end 2026-10-18
+python bridge/forward_labels.py --out runs/forward_labels_2026-10-18/forward_labels.parquet
+python bridge/forward_evaluation.py --out-dir runs/forward_evaluation_2026-10-18
+```
+
+```powershell
+# 阶段 E 等价校验（约 6 分钟/两模型；退出码 0 = 等价）
+python bridge/scorer_equivalence.py --out-dir runs/scorer_equivalence_2026-10-18
+# 行业差异集收益画像
+python bridge/industry_divergence.py
+```
 
 **环境前置（已验证可用，2026-10-17）**：四个上游变量指向项目同级目录即可，`python -m bridge.paths` 通过：
 ```powershell
@@ -159,7 +215,17 @@ $env:A_SHARE_KLINE_DATA_ROOT        = 'C:\Users\Lenovo\Documents\New project\a-s
 - 定案报告：`docs/WORK_REPORT_2026-09-05_C_TRACK_RECAST.md`
 - 裁决记录：`docs/DIRECTION_ADJUDICATION_ABC_2026-08-27_kimi.xlsx`
 
-**本轮（阶段 D/E/F）新增**
+**本轮（2026-10-18，阶段 E/F7）新增**
+- 前向观察预注册：`config/forward_observation_prereg_2026-10-18.json`、`docs/FORWARD_OBSERVATION_PREREG_2026-10-18.md`
+- 评分器等价校验：`docs/SCORER_EQUIVALENCE_2026-10-18.md`、`bridge/scorer_equivalence.py`
+- 基准缺口闭合：`bridge/benchmark_extension.py`、`data/refdata/benchmark_000985_ext.parquet`
+- 前向标签：`bridge/forward_labels.py`
+- 前向评估：`bridge/forward_evaluation.py`、`runs/forward_evaluation_2026-10-18/`
+- 行业差异集收益：`bridge/industry_divergence.py`、`bridge/industry_names.py`
+- 知识条目：`docs/knowledge/verify_external_series_by_exact_reproduction.md`、
+  `docs/knowledge/preregister_threshold_provenance.md`
+
+**上一轮（阶段 D/F9）新增**
 - 数据事实：`docs/DATA_SOURCE_REPORT.md`（§5.1 含申万 PIT 结论）
 - 行业 PIT：`docs/INDUSTRY_PIT_2026-10-18.md`
 - 前向评分：`docs/FORWARD_SHADOW_2026-10-17.md`

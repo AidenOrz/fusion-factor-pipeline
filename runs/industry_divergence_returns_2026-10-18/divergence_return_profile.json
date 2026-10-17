@@ -1,0 +1,54 @@
+{
+  "classification": "industry_divergence_return_profile",
+  "exclusion_fraction": 0.1,
+  "labels_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\runs\\forward_labels_2026-10-18\\forward_labels.parquet",
+  "pit_scores_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\artifacts\\sw_pit_scores_sw.parquet",
+  "production_authorized": false,
+  "profile": {
+    "divergence_test": {
+      "difference_snap_minus_pit": 0.007388428314584805,
+      "mannwhitney_pvalue": 0.9495486898743352,
+      "note": "A large p-value means the two divergent tails are statistically indistinguishable on realised returns; it does not prove equality.",
+      "pit_only_mean_excess": 0.026395784028798504,
+      "snap_only_mean_excess": 0.03378421234338331
+    },
+    "groups": {
+      "both_excluded": {
+        "daily_mean_std": 0.024410671846809482,
+        "days": 39,
+        "mean_excess": 0.011318279796846461,
+        "mean_of_daily_means": 0.01150649853735855,
+        "positive_day_share": 0.5897435897435898,
+        "rows": 5870
+      },
+      "pit_only": {
+        "daily_mean_std": 0.042639575664234555,
+        "days": 39,
+        "mean_excess": 0.026395784028798504,
+        "mean_of_daily_means": 0.02287214865255568,
+        "positive_day_share": 0.6666666666666666,
+        "rows": 293
+      },
+      "retained": {
+        "daily_mean_std": 0.01260698323288593,
+        "days": 39,
+        "mean_excess": 0.03920101409467979,
+        "mean_of_daily_means": 0.03920377061303215,
+        "positive_day_share": 1.0,
+        "rows": 55266
+      },
+      "snap_only": {
+        "daily_mean_std": 0.06346753918148962,
+        "days": 39,
+        "mean_excess": 0.03378421234338331,
+        "mean_of_daily_means": 0.033086309926584394,
+        "positive_day_share": 0.6153846153846154,
+        "rows": 291
+      }
+    },
+    "labelled_days": 39,
+    "labelled_rows": 61720,
+    "sample_warning": "39 labelled days on a 20-day overlapping label is a very small, highly autocorrelated sample. Descriptive only."
+  },
+  "snapshot_scores_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\artifacts\\sw_pit_scores_snapshot.parquet"
+}
