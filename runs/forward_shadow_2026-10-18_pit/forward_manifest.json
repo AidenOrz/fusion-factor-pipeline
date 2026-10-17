@@ -1,0 +1,34 @@
+{
+  "bottom_exclusion_fraction": 0.1,
+  "classification": "forward_shadow_scoring",
+  "commit": "b3b39bc418f8ad1b3f34008c882077b4c9f9a12f",
+  "excluded_features": [
+    "alpha056"
+  ],
+  "feature_count": 37,
+  "features_file": "config/factor_pool_b2_post_lofo_retry_starter_2026-08-28_features.json",
+  "forward_codes": 2150,
+  "forward_days": 59,
+  "forward_end": "2026-10-16",
+  "forward_rows": 95285,
+  "forward_start": "2026-07-20",
+  "frozen_config_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\config\\factor_pool_b2_frozen_2026-08-28.json",
+  "industry_source": "sw2021_pit:sw2021_industry_pit.parquet",
+  "labels_used_for_forward": false,
+  "labels_used_for_training": "selection window only (2023-06-30..2024-09-12)",
+  "panel_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\data\\panel_forward_features_2026-10-16.parquet",
+  "panel_sha256": "dbb991e120c8f9f5438a1a1247d88d476f131b4feb570de862f0ae717473c516",
+  "production_authorized": false,
+  "registered_before_results": true,
+  "scoring_model_id": "huber_b2_neutral_rank",
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "selection_period": "2023-06-30..2024-09-12",
+  "target": "y_neutral_rank20_b2",
+  "train_end": "2024-09-12",
+  "train_rows": 560456,
+  "train_start": "2023-06-30"
+}
