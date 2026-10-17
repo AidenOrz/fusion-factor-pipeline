@@ -201,6 +201,14 @@ def main() -> int:
         help="forward window start (default: max(panel date) - 40 calendar days)",
     )
     parser.add_argument("--forward-end", default=None)
+    parser.add_argument(
+        "--industry-pit",
+        default=None,
+        help=(
+            "parquet of SW2021 PIT classification (code, effective_date, sw_l1); "
+            "when given, output carries industry_pit_l1 next to the snapshot column"
+        ),
+    )
     args = parser.parse_args()
 
     frozen = _load_frozen(_project_path(args.frozen))
@@ -240,10 +248,34 @@ def main() -> int:
 
     out_dir = _project_path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Attach the real PIT industry when supplied. The snapshot column is kept
+    # intact so no reader can mistake one taxonomy for the other.
+    pit_note = "snapshot_only"
+    if args.industry_pit:
+        pit_path = _project_path(args.industry_pit)
+        pit = pd.read_parquet(pit_path)
+        pit = pit.rename(columns={"effective_date": "pit_date"})
+        pit = pit[["pit_date", "code", "sw_l1"]].copy()
+        pit["code"] = pit["code"].astype(str).str.zfill(6)
+        pit = pit.sort_values(["pit_date", "code"]).reset_index(drop=True)
+        left = scored[["date", "code"]].sort_values(["date", "code"]).reset_index(drop=True)
+        joined = pd.merge_asof(
+            left, pit, left_on="date", right_on="pit_date",
+            by="code", direction="backward",
+        )
+        scored["industry_pit_l1"] = joined["sw_l1"].to_numpy()
+        pit_note = "sw2021_pit:" + pit_path.name
+        print(
+            "industry PIT attached; unmatched:",
+            int(scored["industry_pit_l1"].isna().sum()),
+        )
+
     keep = [
         "date", "code", "prediction", "prediction_seed_std",
         "universe_b2", "industry", "float_mcap", "adv20", "is_st", "ret_20d",
     ]
+    if "industry_pit_l1" in scored.columns:
+        keep.append("industry_pit_l1")
     scored[keep].sort_values(["date", "code"]).to_parquet(
         out_dir / "forward_scores.parquet", index=False
     )
@@ -266,9 +298,10 @@ def main() -> int:
     scored["bottom_excluded"] = scored["rank_asc"] <= np.ceil(
         fraction * scored.groupby("date")["code"].transform("size")
     )
-    excluded = scored.loc[
-        scored["bottom_excluded"], ["date", "code", "prediction", "industry"]
-    ]
+    exclude_columns = ["date", "code", "prediction", "industry"]
+    if "industry_pit_l1" in scored.columns:
+        exclude_columns.append("industry_pit_l1")
+    excluded = scored.loc[scored["bottom_excluded"], exclude_columns]
     excluded.to_csv(out_dir / "bottom_excluded.csv", index=False, encoding="utf-8-sig")
 
     manifest = {
@@ -289,6 +322,7 @@ def main() -> int:
         "forward_days": int(scored["date"].nunique()),
         "forward_codes": int(scored["code"].nunique()),
         "bottom_exclusion_fraction": fraction,
+        "industry_source": pit_note,
         "labels_used_for_forward": False,
         "labels_used_for_training": f"selection window only ({frozen['selection_period']})",
         "commit": _git_commit(),
