@@ -20,7 +20,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -106,12 +106,17 @@ def load_scoring_frames(
             ]
         )
     )
-    history = pd.read_parquet(panel_path, columns=history_columns)
+    # Both reads are projected, and neither frame is a full copy of the panel.
+    # Reading the same wide panel twice without projection is what pushed peak
+    # RSS past 7 GB on a 16 GB machine.
+    from bridge.memory import read_panel
+
+    history = read_panel(panel_path, columns=history_columns)
     history["date"] = pd.to_datetime(history["date"], errors="raise")
     history["code"] = history["code"].astype(str).str.zfill(6)
 
     forward_columns = list(dict.fromkeys([*FORWARD_COLUMNS, *features]))
-    forward = pd.read_parquet(panel_path, columns=forward_columns)
+    forward = read_panel(panel_path, columns=forward_columns)
     forward["date"] = pd.to_datetime(forward["date"], errors="raise")
     forward["code"] = forward["code"].astype(str).str.zfill(6)
 
@@ -125,6 +130,78 @@ def load_scoring_frames(
     if leaked:
         raise ValueError(f"forward projection leaked label columns: {leaked}")
     return history, forward
+
+def assert_feature_coverage(
+    forward: pd.DataFrame,
+    features: Sequence[str],
+    *,
+    min_non_null_share: float = 0.50,
+    window_start: pd.Timestamp | None = None,
+    baseline_shares: dict[str, float] | None = None,
+    baseline_tolerance: float = 0.30,
+) -> dict[str, float]:
+    """Refuse to score when the forward window does not actually carry the features.
+
+    This guard exists because its absence cost a whole round. The original code
+    asserted only that the forward projection carried NO label columns - it
+    checked for leakage and never checked for presence. A panel missing 8 of the
+    37 frozen features, with 28 more entirely NaN in the window, scored happily
+    and produced an IC that looked entirely reasonable.
+
+    A model that receives all-NaN inputs returns a near-constant value (LightGBM
+    sends those rows down the default branch), so the failure is silent: the
+    scores are wrong but not absurd, and every downstream metric is meaningless.
+
+    A flat threshold is not enough on its own: some registered features are
+    structurally sparse. alpha028 is entirely empty on 112 of 629 historical days,
+    so demanding 50 percent from it forward would reject a healthy panel. When
+    baseline_shares (measured on the training window) is supplied, a feature
+    passes if it clears the flat floor OR stays close to its own historical share.
+
+    Returns the per-feature non-null share for the manifest. Raises when any
+    frozen feature cannot be verified, naming every offender at once rather than
+    failing on the first one.
+    """
+
+    missing = [c for c in features if c not in forward.columns]
+    window = forward
+    if window_start is not None:
+        window = forward.loc[forward["date"] >= window_start]
+    if "universe_b2" in window.columns:
+        in_universe = window["universe_b2"].fillna(False)
+        if in_universe.any():
+            window = window.loc[in_universe]
+
+    shares: dict[str, float] = {}
+    for column in features:
+        if column not in forward.columns:
+            shares[column] = 0.0
+            continue
+        shares[column] = float(window[column].notna().mean()) if len(window) else 0.0
+
+    def _acceptable(column: str, share: float) -> bool:
+        if share >= min_non_null_share:
+            return True
+        if baseline_shares is None:
+            return False
+        baseline = float(baseline_shares.get(column, 0.0))
+        if baseline <= 0.0:
+            return False
+        # Permit a forward share somewhat below its own history, but never accept
+        # a feature that has effectively vanished.
+        return share >= baseline * (1.0 - baseline_tolerance) and share > 0.05
+
+    empty = [c for c, share in shares.items() if not _acceptable(c, share)]
+    if missing or empty:
+        raise ValueError(
+            "forward window does not carry the frozen feature set;"
+            f" absent columns ({len(missing)}): {sorted(missing)[:10]};"
+            f" insufficient coverage ({len(empty)}): "
+            + str([(c, round(shares[c], 4)) for c in empty[:10]])
+            + f"; required non-null share >= {min_non_null_share}"
+        )
+    return shares
+
 
 
 def fit_frozen_scorer(
@@ -241,6 +318,34 @@ def main() -> int:
         m for m in frozen["models"] if m["id"] == SCORING_MODEL_ID
     )
     target = scoring_model["target"]
+    # Refuse to score when the window does not carry the frozen features. Without
+    # this the pipeline happily fits on history and predicts from all-NaN inputs.
+    # Baselines come from the TRAINING frame (history), not from the forward frame:
+    # the forward window is exactly what has no history to compare against. The
+    # forward frame is label-free but still carries the feature columns for the
+    # selection period, so it can supply them.
+    train_window = forward.loc[
+        forward["date"].between(*selection_range) & forward["universe_b2"].fillna(False)
+    ]
+    if train_window.empty:
+        train_window = history.loc[
+            history["date"].between(*selection_range) & history["universe_b2"].fillna(False)
+        ]
+    baseline = {
+        c: float(train_window[c].notna().mean())
+        for c in features if c in train_window.columns
+    }
+    print("baseline window rows:", len(train_window),
+          " weakest baseline:", min(baseline.items(), key=lambda kv: kv[1]))
+    coverage = assert_feature_coverage(
+        forward, features, window_start=pd.Timestamp(forward_start),
+        baseline_shares=baseline,
+    )
+    print(
+        "feature coverage verified; weakest column:",
+        min(coverage.items(), key=lambda kv: kv[1]),
+    )
+
     models, train_info = fit_frozen_scorer(
         history, features, target, selection_range
     )
@@ -323,6 +428,8 @@ def main() -> int:
         "forward_codes": int(scored["code"].nunique()),
         "bottom_exclusion_fraction": fraction,
         "industry_source": pit_note,
+        "feature_coverage": {k: round(v, 4) for k, v in coverage.items()},
+        "feature_coverage_min_share": round(min(coverage.values()), 4),
         "labels_used_for_forward": False,
         "labels_used_for_training": f"selection window only ({frozen['selection_period']})",
         "commit": _git_commit(),

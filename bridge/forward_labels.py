@@ -58,7 +58,12 @@ def load_panel_with_benchmark(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Load label inputs and fill the benchmark only where it is missing."""
 
-    panel = pd.read_parquet(panel_path, columns=LABEL_INPUTS)
+    # Column projection is the difference between a 580 MB read and a 7.6 GB one:
+    # the wide forward panel carries 185+ columns and the label definition needs
+    # eleven of them.
+    from bridge.memory import read_panel
+
+    panel = read_panel(panel_path, columns=LABEL_INPUTS)
     panel["date"] = pd.to_datetime(panel["date"], errors="raise")
     panel["code"] = panel["code"].astype(str).str.zfill(6)
     before_rows = int(panel["benchmark_close"].isna().sum())
