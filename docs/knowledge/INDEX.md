@@ -24,6 +24,12 @@
 | [preregister_threshold_provenance](preregister_threshold_provenance.md) | 预注册必须连**"阈值是怎么来的"**一起登记；样本量常先于结果可见，不披露就等于给事后调阈值留口子 | 写前向观察 / 样本外验收协议 |
 | [lofo_marginal_contribution](lofo_marginal_contribution.md) | LOFO 边际贡献受**噪声带**支配，单次删除的 IC 变化不可直接读成重要性 | 因子池精简与消融判读 |
 
+## 加速与工程
+
+| 条目 | 一句话 | 适用场景 |
+|---|---|---|
+| [rust_acceleration_with_parity_gate](rust_acceleration_with_parity_gate.md) | 把热点核迁到 Rust 必须有**逐值等价门**；FFI 转换开销可能吃掉全部收益，要实测而非假设 | 想把 Python 热点计算 Rust 化 |
+
 ## 环境
 
 | 条目 | 一句话 | 适用场景 |

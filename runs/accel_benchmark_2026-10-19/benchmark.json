@@ -1,0 +1,34 @@
+{
+  "classification": "acceleration_benchmark",
+  "cross_sections": 817,
+  "results": {
+    "bottom_exclusion": {
+      "python_s": 0.13380979999965348,
+      "rust_s": 0.066046599999936,
+      "speedup": 2.0259907398682615
+    },
+    "churn_series": {
+      "python_s": 0.04106350000029124,
+      "rust_s": 0.06161419999989448,
+      "speedup": 0.6664616273580046
+    },
+    "spearman_ic": {
+      "python_s": 0.1301514000001589,
+      "rust_s": 0.04909769999994751,
+      "speedup": 2.650865519164809
+    }
+  },
+  "rows": 2537139,
+  "rust": {
+    "available": true,
+    "directory": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\rust\\fusion_accel\\target\\release",
+    "error": null
+  },
+  "verification": {
+    "available": true,
+    "cases": 600,
+    "max_abs_ic_diff": 2.220446049250313e-16,
+    "max_abs_rank_diff": 0.0,
+    "verified": true
+  }
+}

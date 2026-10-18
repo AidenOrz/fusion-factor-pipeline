@@ -1,0 +1,27 @@
+[package]
+name = "fusion_accel"
+version = "0.1.0"
+edition = "2021"
+description = "Rust accelerators for fusion-factor-pipeline cross-sectional computations"
+license = "MIT"
+
+[lib]
+name = "fusion_accel"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# The Python bindings sit behind a feature flag on purpose: the numeric kernels
+# must be testable with plain cargo test, without a Python toolchain in the
+# loop. That keeps the Rust behaviour verifiable independently of the pipeline.
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py39"], optional = true }
+numpy = { version = "0.23", optional = true }
+
+[features]
+default = []
+# Enable to build the Python extension module (requires a Python interpreter).
+python = ["pyo3", "numpy"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

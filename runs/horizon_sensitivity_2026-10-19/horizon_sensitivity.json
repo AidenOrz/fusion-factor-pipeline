@@ -1,0 +1,47 @@
+{
+  "classification": "horizon_sensitivity",
+  "decay_vs_20d": {
+    "20": 1.0,
+    "40": 1.121939659660735,
+    "60": 1.1095035633073504
+  },
+  "horizons": {
+    "20": {
+      "coverage_rows": 464870,
+      "first_labelled": "2024-10-22",
+      "horizon_trading_days": 20,
+      "ic_std": 0.15137214329042684,
+      "labelled_days": 254,
+      "last_labelled": "2025-11-05",
+      "mean_ic": 0.12014568813406754,
+      "win_rate": 0.8110236220472441
+    },
+    "40": {
+      "coverage_rows": 422556,
+      "first_labelled": "2024-10-22",
+      "horizon_trading_days": 40,
+      "ic_std": 0.1286656581108445,
+      "labelled_days": 234,
+      "last_labelled": "2025-09-30",
+      "mean_ic": 0.13479621245484052,
+      "win_rate": 0.8461538461538461
+    },
+    "60": {
+      "coverage_rows": 382428,
+      "first_labelled": "2024-10-22",
+      "horizon_trading_days": 60,
+      "ic_std": 0.09116232157764811,
+      "labelled_days": 214,
+      "last_labelled": "2025-09-02",
+      "mean_ic": 0.1333020691007616,
+      "win_rate": 0.9579439252336449
+    }
+  },
+  "panel_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\data\\panel_fusion_b2_adjudicated_2026-08-27.parquet",
+  "predictions_are_frozen_and_untouched": true,
+  "predictions_file": "C:\\Users\\Lenovo\\Documents\\New project\\fusion-factor-pipeline\\runs\\factor_evaluation_v1_b2_frozen_2026-08-28\\huber_b2_neutral_rank\\predictions.parquet",
+  "production_authorized": false,
+  "retrained": false,
+  "rule": "The frozen horizon stays 20 trading days. A 40-day result cannot relabel the model; it can only describe persistence.",
+  "status": "sensitivity_only_not_a_relabel_decision"
+}

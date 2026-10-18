@@ -97,7 +97,12 @@ def exclusion_series(scored: pd.DataFrame, fraction: float) -> pd.DataFrame:
 
 
 def turnover_series(excluded: pd.DataFrame) -> pd.Series:
-    """Share of yesterday's excluded names still excluded today."""
+    """Membership KEEP rate: share of yesterday's excluded still excluded today.
+
+    This is the COMPLEMENT of the C-track change rate. Reporting only this
+    number next to the C-track 0.3805 invited a unit mismatch (0.53 vs 0.38),
+    so the evaluation also reports the change rate and the absolute count.
+    """
 
     by_date = {
         date: set(group.loc[group["bottom_excluded"], "code"])
@@ -110,6 +115,33 @@ def turnover_series(excluded: pd.DataFrame) -> pd.Series:
         if not before:
             continue
         values[current] = len(before & by_date[current]) / len(before)
+    return pd.Series(values, dtype=float)
+
+
+def turnover_change_series(excluded: pd.DataFrame) -> pd.Series:
+    """C-track definition: 1 - keep rate, denominator is the PREVIOUS set."""
+
+    return 1.0 - turnover_series(excluded)
+
+
+def absolute_swap_series(excluded: pd.DataFrame) -> pd.Series:
+    """How many names actually enter or leave the tail per transition.
+
+    The rate moves with the tail size even when behaviour does not, so the
+    absolute count is the scale-free way to say whether churn really rose.
+    """
+
+    by_date = {
+        date: set(group.loc[group["bottom_excluded"], "code"])
+        for date, group in excluded.groupby("date", sort=True)
+    }
+    dates = sorted(by_date)
+    values: dict[pd.Timestamp, float] = {}
+    for previous, current in zip(dates, dates[1:]):
+        before, now = by_date[previous], by_date[current]
+        if not before or not now:
+            continue
+        values[current] = float(len(before - now))
     return pd.Series(values, dtype=float)
 
 
@@ -246,6 +278,8 @@ def evaluate(
     labelled = ic_table.dropna(subset=["ic"])
     diagnostics = score_diagnostics(scores)
     turnover = turnover_series(merged)
+    change_rate = turnover_change_series(merged)
+    absolute_swaps = absolute_swap_series(merged)
     excess = excluded_excess(merged)
 
     ic_values = labelled["ic"] if len(labelled) else pd.Series(dtype=float)
@@ -354,8 +388,15 @@ def evaluate(
                 float((excess > 0).mean()) if len(excess) else None
             ),
             "excluded_group_forward_excess_days": int(len(excess)),
-            "bottom_exclusion_turnover_mean": _mean(turnover),
+            "bottom_exclusion_turnover_keep_rate_mean": _mean(turnover),
+            "bottom_exclusion_turnover_change_rate_mean": _mean(change_rate),
+            "bottom_exclusion_absolute_swaps_per_day": _mean(absolute_swaps),
             "bottom_exclusion_turnover_days": int(len(turnover)),
+            "bottom_exclusion_turnover_definition": (
+                "keep_rate = |prev & cur| / |prev|; change_rate = 1 - keep_rate. "
+                "The C-track reports change_rate, so only that column is directly "
+                "comparable to runs/c_track_acceptance_v2_recast_2026-09-05."
+            ),
             "score_mean_range": [
                 float(diagnostics["score_mean"].min()),
                 float(diagnostics["score_mean"].max()),

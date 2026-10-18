@@ -1,0 +1,68 @@
+{
+  "classification": "robustness_pack_2026_10_19",
+  "coverage_gap": {
+    "codes_audited": 561,
+    "domain_impact": {
+      "conclusion": "The B2 drop is not a real universe contraction. A backfill would raise B2 back to roughly the pre-seam level, which is why the HALT floor of 500 names never bound and why cross-seam comparisons of domain SIZE are invalid.",
+      "measured_post_seam_b2_mean": 1585,
+      "missing_recoverable_b2_members": 360,
+      "pre_seam_b2_mean": 1851,
+      "restored_b2_estimate": 1945
+    },
+    "not_yet_fixed": "The codes are still missing from the panel; this round diagnoses, it does not backfill.",
+    "ownership_evidence": {
+      "interpretation": "Zero loss in every Shanghai prefix and a 74% loss in sz.000 is not a property of the market; it is a property of the fetch.",
+      "loss_rate_sh_600_601_603_605": 0.0,
+      "loss_rate_sz_000": 0.741
+    },
+    "recoverable_upstream": 558,
+    "retracted_claim": "Earlier notes said the 561 missing codes were mostly suspended or delisted. That is false: 558 of 561 have complete upstream bars, and their market-cap percentiles are uniform across all ten deciles, which is the signature of a fetch artefact rather than of genuine exits.",
+    "truly_absent": 3,
+    "truly_absent_codes": [
+      "000004",
+      "002808",
+      "002898"
+    ]
+  },
+  "horizon_sensitivity": {
+    "decay_vs_20d": {
+      "20": 1.0,
+      "40": 1.121939659660735,
+      "60": 1.1095035633073504
+    },
+    "labelled_days": {
+      "20": 254,
+      "40": 234,
+      "60": 214
+    },
+    "mean_ic": {
+      "20": 0.12014568813406754,
+      "40": 0.13479621245484052,
+      "60": 0.1333020691007616
+    },
+    "reading": "IC does not decay from 20 to 40 days; it rises slightly. Sharing a common entry date across horizons, a 40-day return contains the 20-day return, so the two are mechanically related and the comparison is a persistence statement, not an independence test.",
+    "status": "sensitivity_only_not_a_relabel_decision"
+  },
+  "production_authorized": false,
+  "turnover_reconciliation": {
+    "attribution": {
+      "explanation": "Absolute churn rose only 6.3% while the tail shrank 14.6%, so the rate ratio 1.245 = 1.063 / 0.854. The rate looks alarming because the denominator moved, not because the scorer became unstable.",
+      "share_from_genuinely_more_swapping": 0.025,
+      "share_from_smaller_tail_denominator": 0.975
+    },
+    "decomposition": {
+      "absolute_names_swapped_per_day_forward": 76.70689655172414,
+      "absolute_names_swapped_per_day_historical": 72.16483516483517,
+      "absolute_swap_ratio": 1.0629400923110852,
+      "implicit_rate_ratio": 1.2447600030072752,
+      "tail_size_ratio": 0.8539317537059975
+    },
+    "forward_change_rate": 0.4732596671114605,
+    "forward_keep_rate": 0.5267,
+    "headline": "The forward 0.5267 previously reported and the C-track 0.3805 are NOT the same quantity. 0.5267 is the membership KEEP rate; the C-track reports the CHANGE rate. Like-for-like, forward change rate is 0.4733.",
+    "historical_change_rate": 0.3805021001929418,
+    "like_for_like_gap": 0.09279459172627647,
+    "tail_size_matched_history_churn": 0.4709501198390087,
+    "tail_size_matched_history_churn_sd": 0.0012748794844313275
+  }
+}

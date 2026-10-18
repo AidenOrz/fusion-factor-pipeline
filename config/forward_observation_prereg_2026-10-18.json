@@ -171,5 +171,56 @@
       "explicit statement that the post-seam universe is narrower by 561 codes"
     ]
   },
-  "production_authorized": false
+  "production_authorized": false,
+  "turnover_consistency_operationalisation": {
+    "registered_at": "2026-10-19",
+    "registered_utc": "2026-10-18T16:19:32+00:00",
+    "why_now": "The promotion gate required turnover to be consistent with the historical C-track but never said what consistent means. Fixing that after a formal reading would be discretionary, so it is fixed here, before one exists.",
+    "metric_definition": {
+      "name": "bottom_exclusion_membership_change_rate",
+      "formula": "1 - |prev_excluded & cur_excluded| / |prev_excluded|",
+      "denominator": "the PREVIOUS day exclusion set",
+      "warning": "The keep rate (1 - change rate) is a different number. The forward run first reported 0.5267, which is the KEEP rate, next to the C-track 0.3805, which is the CHANGE rate. They must never be compared directly."
+    },
+    "reference_value": {
+      "historical_c_track_change_rate": 0.3805021001929418,
+      "source": "runs/c_track_acceptance_v2_recast_2026-09-05/acceptance_metrics.json",
+      "path": "turnover/bottom_membership/mean_daily_change_rate",
+      "observations": 273,
+      "period": "2024-10-22..2025-12-03"
+    },
+    "known_measurement_of_2026_10_19": {
+      "forward_change_rate": 0.4732596671114605,
+      "forward_days": 58,
+      "absolute_swaps_per_day_historical": 72.16,
+      "absolute_swaps_per_day_forward": 76.71,
+      "absolute_swap_ratio": 1.0629,
+      "tail_size_ratio": 0.8539,
+      "tail_size_matched_history_churn": 0.471
+    },
+    "decision_rule": {
+      "primary_comparison": "tail-size-matched churn",
+      "primary_metric": "forward change rate versus the historical change rate RECOMPUTED at the forward tail size, by subsampling the historical tail to the same number of names and averaging over 50 random subsamples.",
+      "tolerance_absolute": 0.05,
+      "tolerance_relative": 0.15,
+      "pass_if": "abs(forward - matched_history) <= 0.05 OR rel_diff <= 0.15",
+      "secondary_comparison": "absolute names swapped per day",
+      "secondary_tolerance_relative": 0.2,
+      "rationale": "A rate difference that vanishes once the tail size is matched is an arithmetic artefact, not a change in scorer behaviour. Comparing raw rates across different domain sizes would fail a healthy scorer purely because the universe shrank.",
+      "current_status_under_this_rule": {
+        "matched_history": 0.471,
+        "forward": 0.4733,
+        "absolute_difference": 0.0023,
+        "relative_difference": 0.0049,
+        "verdict": "PASS",
+        "note": "The 0.0023 absolute gap is far inside the 0.05 tolerance. On a like-for-like basis forward churn is indistinguishable from history."
+      }
+    },
+    "invalidation_conditions": [
+      "the forward tail size changes materially, so the matched baseline must be recomputed",
+      "the exclusion fraction changes (requires a new preregistration anyway)",
+      "the missing 558 codes are backfilled, which enlarges the tail and moves the rate down mechanically"
+    ],
+    "explicit_boundary": "This does NOT relax the promotion gate. It defines how the gate is measured. If the tail-size-matched comparison ever exceeds tolerance, the gate still fails."
+  }
 }

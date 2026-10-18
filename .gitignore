@@ -45,3 +45,14 @@ runs/*
 *.parquet
 *.sqlite3
 *.db
+
+# Robustness round (2026-10-19): small reviewable evidence only.
+!runs/robustness_pack_2026-10-19/
+!runs/robustness_pack_2026-10-19/*.json
+!runs/horizon_sensitivity_2026-10-19/
+!runs/horizon_sensitivity_2026-10-19/*.json
+!runs/accel_benchmark_2026-10-19/
+!runs/accel_benchmark_2026-10-19/*.json
+
+# Rust build output is never committed; only source and Cargo.lock.
+rust/*/target/
