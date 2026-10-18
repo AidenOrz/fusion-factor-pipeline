@@ -17,6 +17,12 @@
 |---|---|---|
 | [local_kline_panel_rebuild](local_kline_panel_rebuild.md) | v6 schema 面板可由本地 K 线 CSV **精确重建**，8 个派生列逐值复现，不必等上游解锁 | 上游治理锁住面板地平线，需要延伸研究面板 |
 
+## 因子库与横截面算子
+
+| 条目 | 一句话 | 适用场景 |
+|---|---|---|
+| [alpha101_recompute_alignment](alpha101_recompute_alignment.md) | 重算因子库必须逐值对齐权威源；缺 industry/cap 会让 18 个因子静默降级；cs_scale 的正负 inf 相加变 NaN 会吃掉整日截面 | 重算或补齐 alpha101 前向段 |
+
 ## 评估与预注册
 
 | 条目 | 一句话 | 适用场景 |
